@@ -1,5 +1,5 @@
-const API_BASE = '/api';
-
+const API_ORIGIN = ((import.meta as any).env?.VITE_API_URL || '').replace(/\/+$/, '');
+export const API_BASE = `${API_ORIGIN}/api`;
 export interface ApiFetchOptions extends RequestInit {
   timeoutMs?: number;
 }
@@ -7,9 +7,9 @@ export interface ApiFetchOptions extends RequestInit {
 export async function apiFetch<T = any>(
   endpoint: string,
   options: ApiFetchOptions = {}
-): Promise<{ success: boolean; [key: string]: any }> {
+): Promise<{ success: boolean;[key: string]: any }> {
   const token = localStorage.getItem('zylix_token');
-  const timeoutMs = options.timeoutMs || 15000;
+  const timeoutMs = options.timeoutMs || 60000;
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -24,7 +24,8 @@ export async function apiFetch<T = any>(
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const res = await fetch(`${API_BASE}${endpoint}`, {
+    const path = endpoint.startsWith('/api/') ? endpoint.slice(4) : endpoint;
+    const res = await fetch(`${API_BASE}${path}`, {
       ...options,
       headers,
       signal: controller.signal,

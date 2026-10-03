@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { apiFetch } from '../services/api.ts';
-
+import { apiFetch, API_BASE } from '../services/api.ts';
 export type NetworkStatus = 'online' | 'offline' | 'reconnecting' | 'server_unavailable';
 
 interface NetworkContextType {
@@ -31,7 +30,7 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-      const res = await fetch('/api/health', {
+      const res = await fetch(`${API_BASE}/health`, {
         signal: controller.signal,
         cache: 'no-store',
       });

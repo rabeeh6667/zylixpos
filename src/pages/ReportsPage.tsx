@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { apiFetch } from '../services/api.ts';
+import { apiFetch, API_BASE } from '../services/api.ts';
 import { useToast } from '../context/ToastContext.tsx';
 import { KPICard } from '../components/ui/Card.tsx';
 import {
@@ -66,11 +66,13 @@ export const ReportsPage: React.FC = () => {
   const handleExportCsv = () => {
     const token = localStorage.getItem('zylix_token');
     const query = datePreset !== 'custom' ? `preset=${datePreset}` : `startDate=${startDate}&endDate=${endDate}`;
-    const url = `http://localhost:5000/api/reports/export?type=${activeTab}&${query}`;
-
+    const url = `${API_BASE}/reports/export?type=${activeTab}&${query}`;
     // Trigger CSV download
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => res.blob())
+      .then((res) => {
+        if (!res.ok) throw new Error('Export failed');
+        return res.blob();
+      })
       .then((blob) => {
         const link = document.createElement('a');
         link.href = window.URL.createObjectURL(blob);
@@ -85,7 +87,7 @@ export const ReportsPage: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      
+
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
@@ -259,7 +261,7 @@ export const ReportsPage: React.FC = () => {
           {/* 2. PRODUCT & CATEGORY REPORT */}
           {activeTab === 'products' && productReport && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              
+
               {/* Inventory Valuation Summary */}
               {productReport.stockValuation && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
