@@ -99,7 +99,7 @@ export async function seedDatabase() {
   insertAudit.run(cryptoUUID(), bus2Id, user2OwnerId, 'BUSINESS_REGISTERED', 'business', bus2Id, JSON.stringify({ name: 'Metro Bakery & Café' }));
 
   console.log('[Seed] Database seeding completed successfully.');
-  console.log('[Seed] Available Test Accounts (All password: Password123!):');
+  console.log('[Seed] Available Test Accounts (password = SEED_PASSWORD value):');
   console.log('  1. OWNER   : owner@zylix.com (Apex Retail Store)');
   console.log('  2. MANAGER : manager@zylix.com (Apex Retail Store)');
   console.log('  3. CASHIER : cashier@zylix.com (Apex Retail Store)');
