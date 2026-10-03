@@ -19,7 +19,7 @@ import salesRoutes from './routes/sales.ts';
 import posRoutes from './routes/pos.ts';
 import expenseRoutes from './routes/expenses.ts';
 import reportRoutes from './routes/reports.ts';
-
+import { seedDatabase } from './db/seed.ts';
 import notificationRoutes from './routes/notifications.ts';
 import systemRoutes from './routes/system.ts';
 import tenantRoutes from './routes/tenants.ts';
@@ -36,6 +36,11 @@ app.use(express.json());
 
 // Initialize Database & Tables
 initDatabase();
+
+// Demo only: create sample accounts when SEED_DEMO_DATA=true
+if (process.env.SEED_DEMO_DATA === 'true') {
+  seedDatabase().catch((err) => console.error('[Seed Error]', err));
+}
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

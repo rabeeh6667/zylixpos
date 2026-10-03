@@ -8,15 +8,17 @@ export async function seedDatabase() {
   console.log('[Seed] Seeding database with initial multi-tenant test data...');
 
   // Check if initial business already exists
-  const existingBusiness = db.prepare('SELECT id FROM businesses WHERE email = ?').get('owner@zylix.com');
-  if (existingBusiness) {
+  const existingBusiness = db.prepare('SELECT id FROM users WHERE email = ?').get('owner@zylix.com'); if (existingBusiness) {
     console.log('[Seed] Test data already present. Skipping seed.');
     return;
   }
 
   const salt = await bcrypt.genSalt(10);
-  const defaultPasswordHash = await bcrypt.hash('Password123!', salt);
-
+  const seedPassword = process.env.SEED_PASSWORD;
+  if (!seedPassword) {
+    throw new Error('SEED_PASSWORD must be set to seed demo data');
+  }
+  const defaultPasswordHash = await bcrypt.hash(seedPassword, salt);
   // Business 1: Apex Retail Store (Retail)
   const bus1Id = 'bus_apex_001';
   db.prepare(`
