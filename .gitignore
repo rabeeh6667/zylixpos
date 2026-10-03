@@ -31,3 +31,13 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+node_modules
+dist
+.env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+server/data/

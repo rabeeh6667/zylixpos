@@ -27,7 +27,11 @@ import tenantRoutes from './routes/tenants.ts';
 const app = express();
 
 // Middleware
-app.use(cors({ origin: true, credentials: true }));
+const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3000')
+  .split(',')
+  .map((o) => o.trim());
+
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 
 // Initialize Database & Tables
@@ -67,7 +71,7 @@ app.use('/api/reports', reportRoutes);
 app.use(errorHandler);
 
 const PORT = config.port;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`====================================================`);
   console.log(`  🚀 ZYLIX POS Server running on http://localhost:${PORT}`);
   console.log(`  Environment: ${config.nodeEnv}`);

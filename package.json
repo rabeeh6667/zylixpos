@@ -3,11 +3,15 @@
   "version": "1.0.0",
   "description": "ZYLIX POS — Modern Full-Stack Point of Sale & Business Management Platform",
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "tsx watch server/src/server.ts",
     "dev:client": "vite",
     "build": "vite build",
+    "start": "tsx server/src/server.ts",
     "seed": "tsx server/src/db/seed.ts"
   },
   "dependencies": {
@@ -21,7 +25,8 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.5",
-    "sqlite3": "^5.1.7",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3",
     "zod": "^3.24.2"
   },
   "devDependencies": {
@@ -34,8 +39,6 @@
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.2",
-    "tsx": "^4.19.3",
-    "typescript": "^5.7.3",
     "vite": "^6.1.0"
   }
 }
