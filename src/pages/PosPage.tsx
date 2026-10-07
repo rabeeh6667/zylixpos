@@ -487,32 +487,35 @@ export const PosPage: React.FC = () => {
         
         {/* Barcode Scanner Input Card */}
         <div className="zylix-card" style={{ padding: '0.875rem 1.25rem', backgroundColor: '#FFFFFF', border: '1px solid var(--border-color)' }}>
-          <form onSubmit={handleBarcodeSubmit} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div
-              style={{
-                background: 'var(--gradient-primary)',
-                color: '#FFFFFF',
-                width: '38px',
-                height: '38px',
-                borderRadius: 'var(--radius-md)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: 'var(--shadow-gradient)',
-              }}
-            >
-              <Barcode size={20} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <input
-                ref={barcodeInputRef}
-                type="text"
-                placeholder="Scan Barcode / SKU (USB or Bluetooth Scanner Ready)..."
-                className="form-input"
-                style={{ fontSize: '0.9375rem', fontWeight: 600, height: '40px' }}
-                value={barcodeInput}
-                onChange={(e) => setBarcodeInput(e.target.value)}
-              />
+          <form onSubmit={handleBarcodeSubmit} className="pos-barcode-form" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  background: 'var(--gradient-primary)',
+                  color: '#FFFFFF',
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: 'var(--radius-md)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: 'var(--shadow-gradient)',
+                  flexShrink: 0,
+                }}
+              >
+                <Barcode size={20} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <input
+                  ref={barcodeInputRef}
+                  type="text"
+                  placeholder="Scan Barcode / SKU..."
+                  className="form-input"
+                  style={{ fontSize: '0.9375rem', fontWeight: 600, height: '40px' }}
+                  value={barcodeInput}
+                  onChange={(e) => setBarcodeInput(e.target.value)}
+                />
+              </div>
             </div>
             <button type="submit" className="btn btn-primary btn-sm" style={{ height: '40px' }}>
               Scan / Enter
@@ -535,11 +538,11 @@ export const PosPage: React.FC = () => {
           </div>
 
           {/* Category Tabs */}
-          <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.25rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.25rem' }} className="no-scrollbar">
             <button
               onClick={() => setSelectedCategoryId('')}
               className={`btn btn-sm ${!selectedCategoryId ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ borderRadius: 'var(--radius-full)' }}
+              style={{ borderRadius: 'var(--radius-full)', flexShrink: 0 }}
             >
               All Products ({products.length})
             </button>
@@ -548,7 +551,7 @@ export const PosPage: React.FC = () => {
                 key={c.id}
                 onClick={() => setSelectedCategoryId(c.id)}
                 className={`btn btn-sm ${selectedCategoryId === c.id ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ borderRadius: 'var(--radius-full)' }}
+                style={{ borderRadius: 'var(--radius-full)', flexShrink: 0 }}
               >
                 {c.name}
               </button>
@@ -565,7 +568,7 @@ export const PosPage: React.FC = () => {
           ) : filteredProducts.length === 0 ? (
             <EmptyState title="No Matching Products" description="Try adjusting your search terms or category selection." />
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
+            <div className="pos-product-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
               {filteredProducts.map((p) => {
                 const isOutOfStock = p.current_stock <= 0;
                 return (
