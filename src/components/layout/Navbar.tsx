@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.tsx';
 import { useNetwork } from '../../context/NetworkContext.tsx';
 import { apiFetch } from '../../services/api.ts';
+import { ZylixLogo } from '../common/ZylixLogo.tsx';
 import {
   Wifi,
   WifiOff,
@@ -573,16 +574,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileSidebar }) => {
                   flexShrink: 0,
                 }}
               >
-                {user.name.charAt(0).toUpperCase()}
+                {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left' }} className="user-profile-details">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
                   <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    {user.name}
+                    {user?.name || 'User'}
                   </span>
-                  <span className={`badge ${getRoleBadgeClass(user.role)}`} style={{ padding: '1px 5px', fontSize: '0.6875rem' }}>
-                    {user.role}
+                  <span className={`badge ${getRoleBadgeClass(user?.role)}`} style={{ padding: '1px 5px', fontSize: '0.6875rem' }}>
+                    {user?.role || 'OWNER'}
                   </span>
                 </div>
                 <span style={{ fontSize: '0.6875rem', color: 'var(--text-secondary)' }}>
@@ -610,8 +611,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileSidebar }) => {
                 }}
               >
                 <div style={{ padding: '0.5rem 0.75rem', borderBottom: '1px solid var(--border-color)', marginBottom: '0.25rem' }}>
-                  <div style={{ fontWeight: 800, fontSize: '0.8125rem', color: 'var(--text-primary)' }}>{user.name}</div>
-                  <div style={{ fontSize: '0.6875rem', color: 'var(--text-secondary)' }}>{business?.name || 'ZYLIX Store'} • ({user.role})</div>
+                  <div style={{ fontWeight: 800, fontSize: '0.8125rem', color: 'var(--text-primary)' }}>{user?.name || 'User'}</div>
+                  <div style={{ fontSize: '0.6875rem', color: 'var(--text-secondary)' }}>{business?.name || 'ZYLIX Store'} • ({user?.role || 'OWNER'})</div>
                 </div>
 
                 <Link
