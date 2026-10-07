@@ -373,7 +373,7 @@ export const DashboardPage: React.FC = () => {
       </div>
 
       {/* 3. Sales Overview & Quick Actions */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem' }}>
+      <div className="dashboard-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
         
         {/* Sales Overview Chart */}
         <div className="zylix-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
@@ -512,7 +512,7 @@ export const DashboardPage: React.FC = () => {
       </div>
 
       {/* 4. Recent Sales & Top Products Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '1.5rem' }}>
+      <div className="dashboard-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
         
         {/* Recent Sales List */}
         <div className="zylix-card">

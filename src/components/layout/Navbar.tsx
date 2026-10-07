@@ -18,7 +18,8 @@ import {
   CheckCheck,
   User as UserIcon,
   LogOut,
-  ChevronDown
+  ChevronDown,
+  Menu
 } from 'lucide-react';
 
 interface NotificationItem {
@@ -31,7 +32,11 @@ interface NotificationItem {
   entity_type?: string;
 }
 
-export const Navbar: React.FC = () => {
+interface NavbarProps {
+  onToggleMobileSidebar?: () => void;
+}
+
+export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileSidebar }) => {
   const { user, business, logout } = useAuth();
   const { networkStatus } = useNetwork();
   const navigate = useNavigate();
@@ -248,55 +253,69 @@ export const Navbar: React.FC = () => {
 
   return (
     <header className="app-header">
-      {/* Search Input Bar */}
-      <form onSubmit={handleSearchSubmit} style={{ flex: '1', maxWidth: '420px', position: 'relative' }}>
-        <Search
-          size={18}
-          style={{
-            position: 'absolute',
-            left: '12px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            color: 'var(--text-muted)',
-          }}
-        />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search products, customers, invoices... (Press Enter)"
-          className="form-input"
-          style={{
-            paddingLeft: '38px',
-            paddingRight: '60px',
-            height: '40px',
-            borderRadius: 'var(--radius-md)',
-            backgroundColor: 'var(--bg-subtle)',
-            border: '1px solid var(--border-color)',
-            fontSize: '0.84rem',
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            right: '10px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            fontSize: '0.6875rem',
-            fontWeight: 700,
-            color: 'var(--text-muted)',
-            backgroundColor: '#FFFFFF',
-            border: '1px solid var(--border-color)',
-            padding: '2px 6px',
-            borderRadius: '4px',
-          }}
-        >
-          ⌘K
-        </div>
-      </form>
+      {/* Mobile Hamburger & Search Input Bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: '1', maxWidth: '440px', minWidth: 0 }}>
+        {onToggleMobileSidebar && (
+          <button
+            onClick={onToggleMobileSidebar}
+            className="mobile-hamburger-btn btn btn-ghost btn-sm"
+            aria-label="Open Navigation Menu"
+            style={{ padding: '0.375rem', borderRadius: 'var(--radius-md)', flexShrink: 0 }}
+          >
+            <Menu size={22} style={{ color: 'var(--text-primary)' }} />
+          </button>
+        )}
+
+        <form onSubmit={handleSearchSubmit} style={{ flex: '1', position: 'relative', minWidth: 0 }} className="search-container">
+          <Search
+            size={18}
+            style={{
+              position: 'absolute',
+              left: '12px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: 'var(--text-muted)',
+            }}
+          />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search products, customers... (Enter)"
+            className="form-input"
+            style={{
+              paddingLeft: '38px',
+              paddingRight: '48px',
+              height: '40px',
+              borderRadius: 'var(--radius-md)',
+              backgroundColor: 'var(--bg-subtle)',
+              border: '1px solid var(--border-color)',
+              fontSize: '0.84rem',
+            }}
+          />
+          <div
+            className="search-shortcut-badge"
+            style={{
+              position: 'absolute',
+              right: '10px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              fontSize: '0.6875rem',
+              fontWeight: 700,
+              color: 'var(--text-muted)',
+              backgroundColor: '#FFFFFF',
+              border: '1px solid var(--border-color)',
+              padding: '2px 6px',
+              borderRadius: '4px',
+            }}
+          >
+            ⌘K
+          </div>
+        </form>
+      </div>
 
       {/* Right Controls Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }} className="header-actions">
         {/* Network Status Pill */}
         {renderNetworkBadge()}
 

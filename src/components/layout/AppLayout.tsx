@@ -1,12 +1,31 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Navbar } from './Navbar.tsx';
 import { Sidebar } from './Sidebar.tsx';
 import { useAuth } from '../../context/AuthContext.tsx';
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { ErrorBoundary } from '../common/ErrorBoundary.tsx';
 
 export const AppLayout: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuth();
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const location = useLocation();
+
+  // Close mobile sidebar automatically on route change
+  useEffect(() => {
+    setMobileSidebarOpen(false);
+  }, [location.pathname]);
+
+  // Lock body scrolling when mobile drawer is open
+  useEffect(() => {
+    if (mobileSidebarOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [mobileSidebarOpen]);
 
   if (isLoading) {
     return (
@@ -24,9 +43,24 @@ export const AppLayout: React.FC = () => {
 
   return (
     <div className="app-shell">
-      <Sidebar />
+      {/* Mobile Backdrop Overlay */}
+      {mobileSidebarOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setMobileSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <Sidebar
+        isOpen={mobileSidebarOpen}
+        onClose={() => setMobileSidebarOpen(false)}
+      />
+
       <div className="app-main">
-        <Navbar />
+        <Navbar
+          onToggleMobileSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+        />
         <main className="app-body">
           <ErrorBoundary>
             <Outlet />
@@ -36,3 +70,4 @@ export const AppLayout: React.FC = () => {
     </div>
   );
 };
+

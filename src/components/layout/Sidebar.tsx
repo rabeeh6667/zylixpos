@@ -17,10 +17,16 @@ import {
   Settings,
   LogOut,
   Building2,
-  ChevronRight
+  ChevronRight,
+  X
 } from 'lucide-react';
 
-export const Sidebar: React.FC = () => {
+interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const { user, business, logout } = useAuth();
   const role = user?.role || 'CASHIER';
 
@@ -48,10 +54,20 @@ export const Sidebar: React.FC = () => {
   });
 
   return (
-    <aside className="app-sidebar">
-      {/* Brand Logo Header */}
-      <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-color)' }}>
+    <aside className={`app-sidebar ${isOpen ? 'mobile-open' : ''}`}>
+      {/* Brand Logo & Close Header */}
+      <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <ZylixLogo size={42} />
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="mobile-close-btn btn btn-ghost btn-sm"
+            aria-label="Close menu"
+            style={{ padding: '0.375rem', color: 'var(--text-secondary)' }}
+          >
+            <X size={20} />
+          </button>
+        )}
       </div>
 
       {/* Main Navigation List */}
@@ -62,6 +78,7 @@ export const Sidebar: React.FC = () => {
             <NavLink
               key={item.path}
               to={item.path}
+              onClick={onClose}
               style={({ isActive }) => ({
                 display: 'flex',
                 alignItems: 'center',
@@ -122,7 +139,10 @@ export const Sidebar: React.FC = () => {
             </div>
           </div>
           <button
-            onClick={logout}
+            onClick={() => {
+              if (onClose) onClose();
+              logout();
+            }}
             className="btn btn-ghost btn-sm"
             title="Sign Out"
             style={{ padding: '0.375rem', color: 'var(--color-danger)', flexShrink: 0 }}
@@ -134,3 +154,4 @@ export const Sidebar: React.FC = () => {
     </aside>
   );
 };
+
