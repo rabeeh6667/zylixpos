@@ -27,11 +27,36 @@ import tenantRoutes from './routes/tenants.ts';
 const app = express();
 
 // Middleware
-const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3000')
-  .split(',')
-  .map((o) => o.trim());
+const defaultOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://zylixpos.com',
+  'https://www.zylixpos.com',
+];
 
-app.use(cors({ origin: allowedOrigins, credentials: true }));
+const envOrigins = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+const allowedOrigins = Array.from(new Set([...defaultOrigins, ...envOrigins]));
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.endsWith('.zylixpos.com') ||
+        origin.includes('zylixpos.com')
+      ) {
+        return callback(null, true);
+      }
+      callback(null, false);
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // Initialize Database & Tables

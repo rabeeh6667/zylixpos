@@ -31,11 +31,19 @@ export const ExpensesPage: React.FC = () => {
   const [editingExpense, setEditingExpense] = useState<any | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    title: string;
+    category: string;
+    categoryId: string;
+    amount: number | string;
+    paymentMethod: string;
+    expenseDate: string;
+    description: string;
+  }>({
     title: '',
     category: 'Other',
     categoryId: '',
-    amount: 0,
+    amount: '0',
     paymentMethod: 'CASH',
     expenseDate: new Date().toISOString().split('T')[0],
     description: '',
@@ -85,7 +93,7 @@ export const ExpensesPage: React.FC = () => {
       title: '',
       category: 'Rent',
       categoryId: '',
-      amount: 0,
+      amount: '0',
       paymentMethod: 'CASH',
       expenseDate: new Date().toISOString().split('T')[0],
       description: '',
@@ -99,7 +107,7 @@ export const ExpensesPage: React.FC = () => {
       title: e.title || e.category,
       category: e.category,
       categoryId: e.category_id || '',
-      amount: e.amount,
+      amount: e.amount ?? '0',
       paymentMethod: e.payment_method || 'CASH',
       expenseDate: e.expense_date ? e.expense_date.split('T')[0] : new Date().toISOString().split('T')[0],
       description: e.description || '',
@@ -114,9 +122,15 @@ export const ExpensesPage: React.FC = () => {
       const endpoint = editingExpense ? `/expenses/${editingExpense.id}` : '/expenses';
       const method = editingExpense ? 'PUT' : 'POST';
 
+      const numericAmount = form.amount === '' ? 0 : Number(form.amount);
+      const payload = {
+        ...form,
+        amount: numericAmount,
+      };
+
       const res = await apiFetch(endpoint, {
         method,
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
 
       if (res.success) {
@@ -350,12 +364,12 @@ export const ExpensesPage: React.FC = () => {
                 <label className="form-label">Amount (₹) *</label>
                 <input
                   type="number"
-                  step="1"
+                  step="any"
                   min="1"
                   required
                   className="form-input"
                   value={form.amount}
-                  onChange={(e) => setForm({ ...form, amount: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
                 />
               </div>
             </div>

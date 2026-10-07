@@ -28,8 +28,8 @@ export const InventoryPage: React.FC = () => {
   // Modals State
   const [activeModal, setActiveModal] = useState<'stockIn' | 'stockOut' | 'adjust' | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [actionQty, setActionQty] = useState<number>(1);
-  const [newStockTarget, setNewStockTarget] = useState<number>(0);
+  const [actionQty, setActionQty] = useState<number | string>(1);
+  const [newStockTarget, setNewStockTarget] = useState<number | string>(0);
   const [referenceId, setReferenceId] = useState<string>('');
   const [actionNotes, setActionNotes] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
@@ -80,15 +80,18 @@ export const InventoryPage: React.FC = () => {
       let endpoint = '';
       let body: any = {};
 
+      const parsedActionQty = actionQty === '' ? 1 : Number(actionQty);
+      const parsedNewStockTarget = newStockTarget === '' ? 0 : Number(newStockTarget);
+
       if (activeModal === 'stockIn') {
         endpoint = '/inventory/stock-in';
-        body = { productId: selectedProduct.id, quantity: actionQty, referenceId, notes: actionNotes };
+        body = { productId: selectedProduct.id, quantity: parsedActionQty, referenceId, notes: actionNotes };
       } else if (activeModal === 'stockOut') {
         endpoint = '/inventory/stock-out';
-        body = { productId: selectedProduct.id, quantity: actionQty, referenceId, notes: actionNotes };
+        body = { productId: selectedProduct.id, quantity: parsedActionQty, referenceId, notes: actionNotes };
       } else if (activeModal === 'adjust') {
         endpoint = '/inventory/adjust';
-        body = { productId: selectedProduct.id, newStock: newStockTarget, notes: actionNotes };
+        body = { productId: selectedProduct.id, newStock: parsedNewStockTarget, notes: actionNotes };
       }
 
       const res = await apiFetch(endpoint, {
@@ -293,7 +296,7 @@ export const InventoryPage: React.FC = () => {
                     required
                     className="form-input"
                     value={actionQty}
-                    onChange={(e) => setActionQty(parseInt(e.target.value) || 1)}
+                    onChange={(e) => setActionQty(e.target.value)}
                   />
                 </div>
               ) : (
@@ -305,7 +308,7 @@ export const InventoryPage: React.FC = () => {
                     required
                     className="form-input"
                     value={newStockTarget}
-                    onChange={(e) => setNewStockTarget(parseInt(e.target.value) || 0)}
+                    onChange={(e) => setNewStockTarget(e.target.value)}
                   />
                 </div>
               )}

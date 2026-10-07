@@ -7,6 +7,7 @@ export interface User {
   email: string;
   role: UserRole;
   status: UserStatus;
+  isPlatformOwner?: boolean;
   createdAt?: string;
 }
 
@@ -63,10 +64,10 @@ export interface Customer {
 
 export interface CartItem {
   product: Product;
-  quantity: number;
+  quantity: number | string;
   unitPrice: number;
-  discount: number;
-  discountPercent?: number;
+  discount: number | string;
+  discountPercent?: number | string;
   tax: number;
 }
 

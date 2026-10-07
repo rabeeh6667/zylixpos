@@ -1,5 +1,7 @@
 import { TokenPayload } from '../utils/jwt.ts';
 
+declare module 'better-sqlite3';
+
 declare global {
   namespace Express {
     interface Request {
@@ -9,3 +11,4 @@ declare global {
     }
   }
 }
+

@@ -44,17 +44,30 @@ export const ProductsPage: React.FC = () => {
   const [savingProduct, setSavingProduct] = useState(false);
 
   // Form State for Product
-  const [productForm, setProductForm] = useState({
+  const [productForm, setProductForm] = useState<{
+    name: string;
+    brand: string;
+    sku: string;
+    barcode: string;
+    categoryId: string;
+    purchasePrice: number | string;
+    sellingPrice: number | string;
+    taxPercentage: number | string;
+    currentStock: number | string;
+    minimumStock: number | string;
+    unit: string;
+    description: string;
+  }>({
     name: '',
     brand: '',
     sku: '',
     barcode: '',
     categoryId: '',
-    purchasePrice: 0,
-    sellingPrice: 0,
-    taxPercentage: 0,
-    currentStock: 0,
-    minimumStock: 5,
+    purchasePrice: '0',
+    sellingPrice: '0',
+    taxPercentage: '0',
+    currentStock: '0',
+    minimumStock: '5',
     unit: 'pcs',
     description: '',
   });
@@ -107,11 +120,11 @@ export const ProductsPage: React.FC = () => {
       sku: '',
       barcode: '',
       categoryId: categories.length > 0 ? categories[0].id : '',
-      purchasePrice: 0,
-      sellingPrice: 0,
-      taxPercentage: 0,
-      currentStock: 0,
-      minimumStock: 5,
+      purchasePrice: '0',
+      sellingPrice: '0',
+      taxPercentage: '0',
+      currentStock: '0',
+      minimumStock: '5',
       unit: 'pcs',
       description: '',
     });
@@ -126,11 +139,11 @@ export const ProductsPage: React.FC = () => {
       sku: prod.sku || '',
       barcode: prod.barcode || '',
       categoryId: prod.category_id || '',
-      purchasePrice: prod.purchase_price || 0,
-      sellingPrice: prod.selling_price || 0,
-      taxPercentage: prod.tax_percentage || 0,
-      currentStock: prod.current_stock || 0,
-      minimumStock: prod.min_stock || 5,
+      purchasePrice: prod.purchase_price ?? '0',
+      sellingPrice: prod.selling_price ?? '0',
+      taxPercentage: prod.tax_percentage ?? '0',
+      currentStock: prod.current_stock ?? '0',
+      minimumStock: prod.min_stock ?? '5',
       unit: prod.unit || 'pcs',
       description: prod.description || '',
     });
@@ -145,9 +158,18 @@ export const ProductsPage: React.FC = () => {
       const endpoint = editingProduct ? `/products/${editingProduct.id}` : '/products';
       const method = editingProduct ? 'PUT' : 'POST';
 
+      const payload = {
+        ...productForm,
+        purchasePrice: productForm.purchasePrice === '' ? 0 : Number(productForm.purchasePrice),
+        sellingPrice: productForm.sellingPrice === '' ? 0 : Number(productForm.sellingPrice),
+        taxPercentage: productForm.taxPercentage === '' ? 0 : Number(productForm.taxPercentage),
+        currentStock: productForm.currentStock === '' ? 0 : Number(productForm.currentStock),
+        minimumStock: productForm.minimumStock === '' ? 5 : Number(productForm.minimumStock),
+      };
+
       const res = await apiFetch(endpoint, {
         method,
-        body: JSON.stringify(productForm),
+        body: JSON.stringify(payload),
       });
 
       if (res.success) {
@@ -350,8 +372,8 @@ export const ProductsPage: React.FC = () => {
                         >
                           {p.current_stock} {p.unit}
                         </span>
-                        {isLowStock && <AlertTriangle size={15} style={{ color: 'var(--color-warning)' }} title="Low Stock Warning" />}
-                        {isOutOfStock && <AlertTriangle size={15} style={{ color: 'var(--color-danger)' }} title="Out of Stock Warning" />}
+                        {isLowStock && <span title="Low Stock Warning"><AlertTriangle size={15} style={{ color: 'var(--color-warning)' }} /></span>}
+                        {isOutOfStock && <span title="Out of Stock Warning"><AlertTriangle size={15} style={{ color: 'var(--color-danger)' }} /></span>}
                       </div>
                     </td>
                     <td>
@@ -437,11 +459,11 @@ export const ProductsPage: React.FC = () => {
                 <label className="form-label">Selling Price (₹) *</label>
                 <input
                   type="number"
-                  step="1"
+                  step="any"
                   required
                   className="form-input"
                   value={productForm.sellingPrice}
-                  onChange={(e) => setProductForm({ ...productForm, sellingPrice: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => setProductForm({ ...productForm, sellingPrice: e.target.value })}
                 />
               </div>
             </div>
@@ -478,7 +500,7 @@ export const ProductsPage: React.FC = () => {
                   disabled={!!editingProduct}
                   className="form-input"
                   value={productForm.currentStock}
-                  onChange={(e) => setProductForm({ ...productForm, currentStock: parseInt(e.target.value) || 0 })}
+                  onChange={(e) => setProductForm({ ...productForm, currentStock: e.target.value })}
                 />
               </div>
 
@@ -488,7 +510,7 @@ export const ProductsPage: React.FC = () => {
                   type="number"
                   className="form-input"
                   value={productForm.minimumStock}
-                  onChange={(e) => setProductForm({ ...productForm, minimumStock: parseInt(e.target.value) || 5 })}
+                  onChange={(e) => setProductForm({ ...productForm, minimumStock: e.target.value })}
                 />
               </div>
             </div>

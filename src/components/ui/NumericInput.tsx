@@ -3,7 +3,7 @@ import { Minus, Plus } from 'lucide-react';
 
 export interface NumericInputProps {
   value: number | string;
-  onChange: (newValue: number) => void;
+  onChange: (newValue: any) => void;
   min?: number;
   max?: number;
   step?: number;
@@ -36,7 +36,7 @@ export const NumericInput: React.FC<NumericInputProps> = ({
   showButtons = true,
   size = 'md',
 }) => {
-  const numValue = Number(value) || 0;
+  const numValue = value === '' ? 0 : Number(value) || 0;
 
   const sanitizeValue = (val: number): number => {
     if (isNaN(val) || !isFinite(val)) return min;
@@ -52,19 +52,24 @@ export const NumericInput: React.FC<NumericInputProps> = ({
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const rawVal = e.target.value;
     if (rawVal === '') {
-      onChange(min);
+      onChange('');
       return;
     }
-    const parsed = allowDecimal ? parseFloat(rawVal) : parseInt(rawVal, 10);
-    if (!isNaN(parsed)) {
-      onChange(sanitizeValue(parsed));
-    }
+    onChange(rawVal);
   };
 
   const handleBlur = (e: FocusEvent<HTMLInputElement>) => {
     const rawVal = e.target.value;
+    if (rawVal === '') {
+      onChange(min);
+      return;
+    }
     const parsed = allowDecimal ? parseFloat(rawVal) : parseInt(rawVal, 10);
-    onChange(sanitizeValue(isNaN(parsed) ? min : parsed));
+    if (isNaN(parsed)) {
+      onChange(min);
+    } else {
+      onChange(sanitizeValue(parsed));
+    }
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -79,12 +84,14 @@ export const NumericInput: React.FC<NumericInputProps> = ({
 
   const handleStepUp = () => {
     if (disabled) return;
-    onChange(sanitizeValue(numValue + step));
+    const current = value === '' ? min : Number(value) || 0;
+    onChange(sanitizeValue(current + step));
   };
 
   const handleStepDown = () => {
     if (disabled) return;
-    onChange(sanitizeValue(numValue - step));
+    const current = value === '' ? min : Number(value) || 0;
+    onChange(sanitizeValue(current - step));
   };
 
   const isMinReached = numValue <= min;
@@ -137,7 +144,7 @@ export const NumericInput: React.FC<NumericInputProps> = ({
         type="number"
         name={name}
         id={id}
-        value={value === 0 && placeholder ? '' : value}
+        value={value}
         onChange={handleInputChange}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
@@ -188,3 +195,4 @@ export const NumericInput: React.FC<NumericInputProps> = ({
     </div>
   );
 };
+

@@ -241,7 +241,7 @@ export const DashboardPage: React.FC = () => {
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      justify: 'space-between',
+                      justifyContent: 'space-between',
                       padding: '0.5rem 0.75rem',
                       borderRadius: 'var(--radius-sm)',
                       border: activePreset === opt.id && !isCustomMode ? '1px solid var(--color-pink)' : '1px solid transparent',
@@ -264,7 +264,7 @@ export const DashboardPage: React.FC = () => {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  justify: 'space-between',
+                  justifyContent: 'space-between',
                   padding: '0.5rem 0.75rem',
                   borderRadius: 'var(--radius-sm)',
                   border: isCustomMode ? '1px solid var(--color-purple)' : '1px solid var(--border-color)',
@@ -543,7 +543,7 @@ export const DashboardPage: React.FC = () => {
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    justify: 'space-between',
+                    justifyContent: 'space-between',
                     padding: '0.75rem 1rem',
                     backgroundColor: 'var(--bg-subtle)',
                     borderRadius: 'var(--radius-md)',

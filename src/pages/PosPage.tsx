@@ -46,8 +46,8 @@ export const PosPage: React.FC = () => {
   // Cart State
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
-  const [orderDiscount, setOrderDiscount] = useState<number>(0);
-  const [billDiscountPercent, setBillDiscountPercent] = useState<number>(0);
+  const [orderDiscount, setOrderDiscount] = useState<number | string>(0);
+  const [billDiscountPercent, setBillDiscountPercent] = useState<number | string>(0);
   const [billDiscountMode, setBillDiscountMode] = useState<'percent' | 'amount'>('percent');
 
   // Modals State
@@ -60,8 +60,8 @@ export const PosPage: React.FC = () => {
 
   // Checkout & Safety State
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'UPI' | 'SPLIT'>('CASH');
-  const [amountReceived, setAmountReceived] = useState<number>(0);
-  const [splitPayments, setSplitPayments] = useState<{ paymentMethod: 'CASH' | 'CARD' | 'UPI'; amount: number }[]>([
+  const [amountReceived, setAmountReceived] = useState<number | string>(0);
+  const [splitPayments, setSplitPayments] = useState<{ paymentMethod: 'CASH' | 'CARD' | 'UPI'; amount: number | string }[]>([
     { paymentMethod: 'CASH', amount: 0 },
     { paymentMethod: 'CARD', amount: 0 },
   ]);
@@ -188,7 +188,8 @@ export const PosPage: React.FC = () => {
       const existingIndex = prevCart.findIndex((item) => item.product.id === product.id);
       if (existingIndex > -1) {
         const updated = [...prevCart];
-        const newQty = updated[existingIndex].quantity + 1;
+        const currentQty = updated[existingIndex].quantity === '' ? 0 : Number(updated[existingIndex].quantity);
+        const newQty = currentQty + 1;
         updated[existingIndex] = {
           ...updated[existingIndex],
           quantity: newQty,
@@ -215,7 +216,8 @@ export const PosPage: React.FC = () => {
       prev
         .map((item) => {
           if (item.product.id === productId) {
-            const newQty = item.quantity + delta;
+            const currentQty = item.quantity === '' ? 0 : Number(item.quantity);
+            const newQty = currentQty + delta;
             return newQty > 0 ? { ...item, quantity: newQty } : null;
           }
           return item;
@@ -240,18 +242,34 @@ export const PosPage: React.FC = () => {
   };
 
   // Calculations
-  const cartGrossSubtotal = cart.reduce((acc, item) => acc + item.unitPrice * item.quantity, 0);
-  const cartItemDiscounts = cart.reduce((acc, item) => acc + (item.discount || 0) * item.quantity, 0);
+  const cartGrossSubtotal = cart.reduce((acc, item) => {
+    const qty = item.quantity === '' ? 0 : Number(item.quantity);
+    return acc + item.unitPrice * qty;
+  }, 0);
+
+  const cartItemDiscounts = cart.reduce((acc, item) => {
+    const qty = item.quantity === '' ? 0 : Number(item.quantity);
+    const disc = item.discount === '' ? 0 : Number(item.discount);
+    return acc + disc * qty;
+  }, 0);
+
   const netSubtotalAfterItemDiscounts = Math.max(0, cartGrossSubtotal - cartItemDiscounts);
 
+  const billDiscPct = billDiscountPercent === '' ? 0 : Number(billDiscountPercent);
+  const orderDiscAmt = orderDiscount === '' ? 0 : Number(orderDiscount);
+
   const computedBillDiscount = billDiscountMode === 'percent'
-    ? Math.round((netSubtotalAfterItemDiscounts * (billDiscountPercent / 100)) * 100) / 100
-    : orderDiscount;
+    ? Math.round((netSubtotalAfterItemDiscounts * (billDiscPct / 100)) * 100) / 100
+    : orderDiscAmt;
 
   const clampedBillDiscount = Math.min(netSubtotalAfterItemDiscounts, Math.max(0, computedBillDiscount));
   const subtotalAfterAllDiscounts = Math.max(0, netSubtotalAfterItemDiscounts - clampedBillDiscount);
 
-  const cartTaxes = cart.reduce((acc, item) => acc + (item.tax || 0) * item.quantity, 0);
+  const cartTaxes = cart.reduce((acc, item) => {
+    const qty = item.quantity === '' ? 0 : Number(item.quantity);
+    return acc + (item.tax || 0) * qty;
+  }, 0);
+
   const grandTotal = Math.round((subtotalAfterAllDiscounts + cartTaxes) * 100) / 100;
   const cartSubtotal = cartGrossSubtotal;
 
@@ -369,26 +387,31 @@ export const PosPage: React.FC = () => {
     }
 
     try {
+      const numReceived = amountReceived === '' ? 0 : Number(amountReceived);
+      const billDiscPctVal = billDiscountPercent === '' ? 0 : Number(billDiscountPercent);
+
       const payload = {
         customerId: selectedCustomerId || null,
         items: cart.map((i) => ({
           productId: i.product.id,
-          quantity: i.quantity,
+          quantity: i.quantity === '' ? 0 : Number(i.quantity),
           unitPrice: i.unitPrice,
-          discountPercent: i.discountPercent || 0,
-          discount: i.discount || 0,
+          discountPercent: i.discountPercent === '' || i.discountPercent === undefined ? 0 : Number(i.discountPercent),
+          discount: i.discount === '' || i.discount === undefined ? 0 : Number(i.discount),
           tax: i.tax,
         })),
         subtotal: cartGrossSubtotal,
         productDiscountsTotal: cartItemDiscounts,
-        billDiscountPercent: billDiscountMode === 'percent' ? billDiscountPercent : 0,
+        billDiscountPercent: billDiscountMode === 'percent' ? billDiscPctVal : 0,
         billDiscountAmount: clampedBillDiscount,
         discount: cartItemDiscounts + clampedBillDiscount,
         tax: cartTaxes,
         grandTotal,
-        amountReceived,
+        amountReceived: numReceived,
         paymentMethod,
-        payments: paymentMethod === 'SPLIT' ? splitPayments : undefined,
+        payments: paymentMethod === 'SPLIT'
+          ? splitPayments.map((p) => ({ ...p, amount: p.amount === '' ? 0 : Number(p.amount) }))
+          : undefined,
         idempotencyKey: keyToUse,
         notes: orderNotes,
       };
@@ -688,7 +711,7 @@ export const PosPage: React.FC = () => {
         {/* Cart Item Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
           <span style={{ fontSize: '0.9375rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <ShoppingCart size={18} style={{ color: 'var(--color-pink)' }} /> Current Cart ({cart.reduce((a, b) => a + b.quantity, 0)})
+            <ShoppingCart size={18} style={{ color: 'var(--color-pink)' }} /> Current Cart ({cart.reduce((a, b) => a + (b.quantity === '' ? 0 : Number(b.quantity)), 0)})
           </span>
           {cart.length > 0 && (
             <button onClick={clearCart} className="btn btn-ghost btn-sm" style={{ color: 'var(--color-danger)', padding: '0.25rem 0.5rem' }}>
@@ -707,8 +730,10 @@ export const PosPage: React.FC = () => {
             </div>
           ) : (
             cart.map((item) => {
-              const lineGross = item.unitPrice * item.quantity;
-              const itemDiscountTotal = (item.discount || 0) * item.quantity;
+              const itemQty = item.quantity === '' ? 0 : Number(item.quantity);
+              const itemDisc = item.discount === '' ? 0 : Number(item.discount);
+              const lineGross = item.unitPrice * itemQty;
+              const itemDiscountTotal = itemDisc * itemQty;
               const lineSubtotal = Math.max(0, lineGross - itemDiscountTotal);
 
               return (
@@ -763,9 +788,14 @@ export const PosPage: React.FC = () => {
                         className="form-input"
                         value={item.discountPercent !== undefined ? item.discountPercent : ''}
                         onChange={(e) => {
-                          const pct = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0));
-                          const discAmt = (item.unitPrice * pct) / 100;
-                          setCart((prev) => prev.map((i) => (i.product.id === item.product.id ? { ...i, discountPercent: pct, discount: discAmt } : i)));
+                          const raw = e.target.value;
+                          if (raw === '') {
+                            setCart((prev) => prev.map((i) => (i.product.id === item.product.id ? { ...i, discountPercent: '', discount: '' } : i)));
+                          } else {
+                            const pct = Math.min(100, Math.max(0, parseFloat(raw) || 0));
+                            const discAmt = (item.unitPrice * pct) / 100;
+                            setCart((prev) => prev.map((i) => (i.product.id === item.product.id ? { ...i, discountPercent: raw, discount: Math.round(discAmt * 100) / 100 } : i)));
+                          }
                         }}
                       />
 
@@ -777,11 +807,16 @@ export const PosPage: React.FC = () => {
                         placeholder="0"
                         style={{ width: '60px', padding: '2px 6px', fontSize: '0.75rem', textAlign: 'right', height: '28px' }}
                         className="form-input"
-                        value={item.discount || ''}
+                        value={item.discount !== undefined ? item.discount : ''}
                         onChange={(e) => {
-                          const amt = Math.max(0, parseFloat(e.target.value) || 0);
-                          const pct = item.unitPrice > 0 ? Math.min(100, (amt / item.unitPrice) * 100) : 0;
-                          setCart((prev) => prev.map((i) => (i.product.id === item.product.id ? { ...i, discount: amt, discountPercent: Math.round(pct * 100) / 100 } : i)));
+                          const raw = e.target.value;
+                          if (raw === '') {
+                            setCart((prev) => prev.map((i) => (i.product.id === item.product.id ? { ...i, discount: '', discountPercent: '' } : i)));
+                          } else {
+                            const amt = Math.max(0, parseFloat(raw) || 0);
+                            const pct = item.unitPrice > 0 ? Math.min(100, (amt / item.unitPrice) * 100) : 0;
+                            setCart((prev) => prev.map((i) => (i.product.id === item.product.id ? { ...i, discount: raw, discountPercent: Math.round(pct * 100) / 100 } : i)));
+                          }
                         }}
                       />
 
@@ -846,8 +881,8 @@ export const PosPage: React.FC = () => {
                   placeholder="0"
                   style={{ width: '65px', padding: '2px 8px', fontSize: '0.8125rem', textAlign: 'right', height: '30px' }}
                   className="form-input"
-                  value={billDiscountPercent || ''}
-                  onChange={(e) => setBillDiscountPercent(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                  value={billDiscountPercent}
+                  onChange={(e) => setBillDiscountPercent(e.target.value)}
                 />
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                   (−{formatCurrency(clampedBillDiscount)})
@@ -862,8 +897,8 @@ export const PosPage: React.FC = () => {
                   placeholder="0"
                   style={{ width: '85px', padding: '2px 8px', fontSize: '0.8125rem', textAlign: 'right', height: '30px' }}
                   className="form-input"
-                  value={orderDiscount || ''}
-                  onChange={(e) => setOrderDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
+                  value={orderDiscount}
+                  onChange={(e) => setOrderDiscount(e.target.value)}
                 />
               </div>
             )}
@@ -999,12 +1034,12 @@ export const PosPage: React.FC = () => {
                   <label className="form-label">Amount Received (₹) *</label>
                   <input
                     type="number"
-                    step="1"
+                    step="any"
                     min={grandTotal}
                     required
                     className="form-input"
                     value={amountReceived}
-                    onChange={(e) => setAmountReceived(parseFloat(e.target.value) || 0)}
+                    onChange={(e) => setAmountReceived(e.target.value)}
                   />
                 </div>
 
@@ -1014,7 +1049,7 @@ export const PosPage: React.FC = () => {
                     className="form-input"
                     style={{ backgroundColor: 'var(--color-success-bg)', color: 'var(--color-success)', fontWeight: 800, fontSize: '1.125rem' }}
                   >
-                    {formatCurrency(Math.max(0, amountReceived - grandTotal))}
+                    {formatCurrency(Math.max(0, (amountReceived === '' ? 0 : Number(amountReceived)) - grandTotal))}
                   </div>
                 </div>
               </div>
@@ -1029,14 +1064,15 @@ export const PosPage: React.FC = () => {
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Cash Amount (₹)</span>
                     <input
                       type="number"
-                      step="1"
+                      step="any"
                       className="form-input"
                       value={splitPayments[0].amount}
                       onChange={(e) => {
-                        const val = parseFloat(e.target.value) || 0;
+                        const valStr = e.target.value;
+                        const valNum = valStr === '' ? 0 : parseFloat(valStr) || 0;
                         setSplitPayments([
-                          { paymentMethod: 'CASH', amount: val },
-                          { paymentMethod: 'CARD', amount: Math.max(0, grandTotal - val) },
+                          { paymentMethod: 'CASH', amount: valStr },
+                          { paymentMethod: 'CARD', amount: Math.max(0, grandTotal - valNum) },
                         ]);
                       }}
                     />
@@ -1046,14 +1082,15 @@ export const PosPage: React.FC = () => {
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Card Amount (₹)</span>
                     <input
                       type="number"
-                      step="1"
+                      step="any"
                       className="form-input"
                       value={splitPayments[1].amount}
                       onChange={(e) => {
-                        const val = parseFloat(e.target.value) || 0;
+                        const valStr = e.target.value;
+                        const valNum = valStr === '' ? 0 : parseFloat(valStr) || 0;
                         setSplitPayments([
-                          { paymentMethod: 'CASH', amount: Math.max(0, grandTotal - val) },
-                          { paymentMethod: 'CARD', amount: val },
+                          { paymentMethod: 'CASH', amount: Math.max(0, grandTotal - valNum) },
+                          { paymentMethod: 'CARD', amount: valStr },
                         ]);
                       }}
                     />
@@ -1215,8 +1252,8 @@ export const PosPage: React.FC = () => {
                 } else if (parsed && Array.isArray(parsed.cart)) {
                   items = parsed.cart;
                 }
-                itemCount = items.reduce((acc, i) => acc + (i.quantity || 1), 0);
-                totalAmount = items.reduce((acc, i) => acc + ((i.unitPrice || 0) * (i.quantity || 1)), 0);
+                itemCount = items.reduce((acc, i) => acc + (i.quantity === '' ? 0 : Number(i.quantity) || 1), 0);
+                totalAmount = items.reduce((acc, i) => acc + ((i.unitPrice || 0) * (i.quantity === '' ? 0 : Number(i.quantity) || 1)), 0);
               } catch (e) {
                 // Ignore parse errors for preview
               }

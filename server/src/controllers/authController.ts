@@ -171,13 +171,20 @@ export async function login(req: Request, res: Response) {
       });
     }
 
+    const normalizedEmail = String(user.email || '').trim().toLowerCase();
+    const isPlatformOwner = Boolean(
+      user.role === 'OWNER' &&
+      user.status === 'ACTIVE' &&
+      normalizedEmail === 'owner@zylix.com'
+    );
+
     const tokenPayload = {
       userId: user.id,
       businessId: user.business_id,
       email: user.email,
       name: user.name,
       role: user.role,
-      isPlatformOwner: Boolean(user.is_platform_owner === 1),
+      isPlatformOwner,
     };
 
     const token = generateToken(tokenPayload);
@@ -202,7 +209,7 @@ export async function login(req: Request, res: Response) {
         email: user.email,
         role: user.role,
         status: user.status,
-        isPlatformOwner: Boolean(user.is_platform_owner === 1),
+        isPlatformOwner,
       },
       business: {
         id: user.business_id,
@@ -239,6 +246,20 @@ export async function getCurrentUser(req: Request, res: Response) {
       return res.status(404).json({ success: false, message: 'User or Business record not found.' });
     }
 
+    const normalizedEmail = String(user.email || '').trim().toLowerCase();
+    const isPlatformOwner = Boolean(
+      user.role === 'OWNER' &&
+      user.status === 'ACTIVE' &&
+      normalizedEmail === 'owner@zylix.com'
+    );
+
+    console.log(`[CURRENT USER ME]
+userId=${user.id}
+email=${user.email}
+role=${user.role}
+businessId=${user.business_id}
+isPlatformOwner=${isPlatformOwner}`);
+
     if (user.business_status === 'SUSPENDED') {
       return res.status(403).json({
         success: false,
@@ -255,7 +276,7 @@ export async function getCurrentUser(req: Request, res: Response) {
         email: user.email,
         role: user.role,
         status: user.status,
-        isPlatformOwner: Boolean(user.is_platform_owner === 1),
+        isPlatformOwner,
         createdAt: user.created_at,
       },
       business: {

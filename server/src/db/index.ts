@@ -412,11 +412,14 @@ export function initDatabase() {
   safeAddColumn('sale_items', 'discount_percent REAL DEFAULT 0');
   safeAddColumn('sale_items', 'discount_amount REAL DEFAULT 0');
 
-  // Update primary owner display name to Rabeeh & mark as platform owner
+  // Enforce strictly one ZYLIX Platform Owner: owner@zylix.com
   try {
-    db.prepare("UPDATE users SET name = 'Rabeeh', is_platform_owner = 1 WHERE role = 'OWNER' AND (email = 'owner@zylix.com' OR id = 'user_apex_owner')").run();
+    db.exec(`
+      UPDATE users SET is_platform_owner = 0 WHERE LOWER(TRIM(email)) <> 'owner@zylix.com';
+      UPDATE users SET name = 'Rabeeh', is_platform_owner = 1 WHERE role = 'OWNER' AND LOWER(TRIM(email)) = 'owner@zylix.com';
+    `);
   } catch (e) {
-    // Ignore if table not created
+    console.warn('[DB Migration Warning] Platform owner enforcement failed:', e);
   }
 
   // Self-healing migration: Ensure active business users have ACTIVE status so approved tenants can log in

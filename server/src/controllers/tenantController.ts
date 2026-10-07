@@ -503,11 +503,11 @@ export async function updateTenant(req: Request, res: Response) {
     })();
 
     logAuditEvent({
-      businessId: req.businessId || id,
+      businessId: (req.businessId || id) as string,
       userId: req.user?.userId,
       action: 'TENANT_UPDATED',
       entity: 'business',
-      entityId: id,
+      entityId: id as string,
       description: `Tenant business updated: ${d.businessName || existingBus.name}`,
       metadata: d,
     });
@@ -554,11 +554,11 @@ export async function updateTenantStatus(req: Request, res: Response) {
     const actionType = newStatus === 'SUSPENDED' ? 'TENANT_SUSPENDED' : 'TENANT_ACTIVATED';
 
     logAuditEvent({
-      businessId: req.businessId || id,
+      businessId: (req.businessId || id) as string,
       userId: req.user?.userId,
       action: actionType,
       entity: 'business',
-      entityId: id,
+      entityId: id as string,
       description: `Tenant business '${existing.name}' status set to ${newStatus}`,
       metadata: { status: newStatus },
     });
