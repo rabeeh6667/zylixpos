@@ -270,8 +270,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileSidebar }) => {
         )}
 
         {/* Mobile Brand Logo */}
-        <div className="mobile-brand-logo" style={{ display: 'none', alignItems: 'center', flexShrink: 0 }}>
-          <ZylixLogo size={32} />
+        <div className="mobile-brand-logo" style={{ alignItems: 'center', flexShrink: 0 }}>
+          <ZylixLogo size={30} />
         </div>
 
         {/* Desktop / Expanded Search Bar */}
@@ -334,12 +334,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileSidebar }) => {
       </div>
 
       {/* Right Controls Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }} className="header-actions">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', flexShrink: 0 }} className="header-actions">
         {/* Mobile Search Toggle Button */}
         <button
           onClick={() => setShowMobileSearch(!showMobileSearch)}
           className="mobile-search-toggle btn btn-secondary btn-sm"
-          style={{ width: '36px', height: '36px', padding: 0, borderRadius: 'var(--radius-md)', display: 'none', alignItems: 'center', justifyContent: 'center' }}
+          style={{ width: '36px', height: '36px', padding: 0, borderRadius: 'var(--radius-md)', alignItems: 'center', justifyContent: 'center' }}
           title="Search"
         >
           <Search size={18} style={{ color: 'var(--text-secondary)' }} />

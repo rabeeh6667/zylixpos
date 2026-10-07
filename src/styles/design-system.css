@@ -877,10 +877,17 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
+@media (max-width: 375px) {
+  .zylix-logo-container span:last-child {
+    display: none !important;
+  }
+}
+
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
 
 
 

@@ -333,7 +333,7 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           {/* Quick Period Filter Pills matching reference screenshot */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }} className="filter-scroll">
             <button
               onClick={() => handleSelectPreset('today')}
               style={{
@@ -343,6 +343,8 @@ export const DashboardPage: React.FC = () => {
                 fontWeight: 700,
                 border: 'none',
                 cursor: 'pointer',
+                flexShrink: 0,
+                whiteSpace: 'nowrap',
                 background: activePreset === 'today' ? 'var(--gradient-primary)' : 'var(--bg-subtle)',
                 color: activePreset === 'today' ? '#FFFFFF' : 'var(--text-secondary)',
                 boxShadow: activePreset === 'today' ? '0 4px 12px rgba(244, 63, 122, 0.35)' : 'none',
@@ -360,6 +362,8 @@ export const DashboardPage: React.FC = () => {
                 fontWeight: 700,
                 border: 'none',
                 cursor: 'pointer',
+                flexShrink: 0,
+                whiteSpace: 'nowrap',
                 background: activePreset === '7days' ? 'var(--gradient-primary)' : 'var(--bg-subtle)',
                 color: activePreset === '7days' ? '#FFFFFF' : 'var(--text-secondary)',
                 boxShadow: activePreset === '7days' ? '0 4px 12px rgba(244, 63, 122, 0.35)' : 'none',
@@ -377,6 +381,8 @@ export const DashboardPage: React.FC = () => {
                 fontWeight: 700,
                 border: 'none',
                 cursor: 'pointer',
+                flexShrink: 0,
+                whiteSpace: 'nowrap',
                 background: activePreset === 'this_month' ? 'var(--gradient-primary)' : 'var(--bg-subtle)',
                 color: activePreset === 'this_month' ? '#FFFFFF' : 'var(--text-secondary)',
                 boxShadow: activePreset === 'this_month' ? '0 4px 12px rgba(244, 63, 122, 0.35)' : 'none',
