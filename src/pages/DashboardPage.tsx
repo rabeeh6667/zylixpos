@@ -166,174 +166,231 @@ export const DashboardPage: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       
-      {/* 1. Header Section with Working Date Selector */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+      {/* 1. Header Greeting Section */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.625rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
+          <h1 style={{ fontSize: '1.875rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.25rem', letterSpacing: '-0.02em' }}>
             Good Day, {user?.name ? user.name.split(' ')[0] : 'Rabeeh'} 👋
           </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', lineHeight: 1.4 }}>
             Real-time sales & operations performance overview for <strong>{periodLabel}</strong>.
           </p>
         </div>
 
-        {/* Date Range Selector Dropdown */}
-        <div style={{ position: 'relative' }} ref={dropdownRef}>
-          <button
-            onClick={() => setDateDropdownOpen(!dateDropdownOpen)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.625rem',
-              backgroundColor: '#FFFFFF',
-              border: '1px solid var(--border-color)',
-              padding: '0.625rem 1rem',
-              borderRadius: 'var(--radius-md)',
-              boxShadow: 'var(--shadow-xs)',
-              fontSize: '0.875rem',
-              fontWeight: 700,
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-            }}
-          >
-            <CalendarIcon size={18} style={{ color: 'var(--color-pink)' }} />
-            <span>{periodLabel}</span>
-            <ChevronDown size={14} style={{ color: 'var(--text-muted)' }} />
-          </button>
-
-          {/* Date Selector Modal Dropdown */}
-          {dateDropdownOpen && (
-            <div
+        {/* Date Selector Row with Primary Dropdown + Quick Action Pills */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.25rem' }} className="no-scrollbar">
+          {/* Main Dropdown Button */}
+          <div style={{ position: 'relative', flexShrink: 0 }} ref={dropdownRef}>
+            <button
+              onClick={() => setDateDropdownOpen(!dateDropdownOpen)}
               style={{
-                position: 'absolute',
-                top: 'calc(100% + 0.5rem)',
-                right: 0,
-                width: '320px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.625rem',
                 backgroundColor: '#FFFFFF',
                 border: '1px solid var(--border-color)',
-                borderRadius: 'var(--radius-lg)',
-                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05)',
-                zIndex: 100,
-                padding: '0.875rem',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.5rem'
+                padding: '0.625rem 1rem',
+                borderRadius: 'var(--radius-md)',
+                boxShadow: 'var(--shadow-xs)',
+                fontSize: '0.875rem',
+                fontWeight: 700,
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
               }}
             >
-              <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem', padding: '0 0.25rem' }}>
-                Select Period
-              </div>
+              <CalendarIcon size={18} style={{ color: 'var(--color-pink)' }} />
+              <span>{periodLabel}</span>
+              <ChevronDown size={14} style={{ color: 'var(--text-muted)' }} />
+            </button>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.375rem' }}>
-                {[
-                  { id: 'today', label: 'Today' },
-                  { id: 'yesterday', label: 'Yesterday' },
-                  { id: '7days', label: 'Last 7 Days' },
-                  { id: '30days', label: 'Last 30 Days' },
-                  { id: 'this_month', label: 'This Month' },
-                  { id: 'last_month', label: 'Previous Month' },
-                ].map((opt) => (
-                  <button
-                    key={opt.id}
-                    onClick={() => handleSelectPreset(opt.id as PresetOption)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '0.5rem 0.75rem',
-                      borderRadius: 'var(--radius-sm)',
-                      border: activePreset === opt.id && !isCustomMode ? '1px solid var(--color-pink)' : '1px solid transparent',
-                      backgroundColor: activePreset === opt.id && !isCustomMode ? 'var(--bg-pink-pastel)' : 'var(--bg-subtle)',
-                      color: activePreset === opt.id && !isCustomMode ? 'var(--color-pink)' : 'var(--text-primary)',
-                      fontSize: '0.8125rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      textAlign: 'left'
-                    }}
-                  >
-                    <span>{opt.label}</span>
-                    {activePreset === opt.id && !isCustomMode && <Check size={14} />}
-                  </button>
-                ))}
-              </div>
-
-              <button
-                onClick={() => setIsCustomMode(!isCustomMode)}
+            {/* Date Selector Modal Dropdown */}
+            {dateDropdownOpen && (
+              <div
                 style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 0.5rem)',
+                  left: 0,
+                  width: '300px',
+                  backgroundColor: '#FFFFFF',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-lg)',
+                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05)',
+                  zIndex: 100,
+                  padding: '0.875rem',
                   display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: 'var(--radius-sm)',
-                  border: isCustomMode ? '1px solid var(--color-purple)' : '1px solid var(--border-color)',
-                  backgroundColor: isCustomMode ? 'var(--bg-purple-pastel)' : '#FFFFFF',
-                  color: isCustomMode ? 'var(--color-purple)' : 'var(--text-primary)',
-                  fontSize: '0.8125rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  marginTop: '0.25rem'
+                  flexDirection: 'column',
+                  gap: '0.5rem'
                 }}
               >
-                <span>Custom Date Range</span>
-                <ChevronDown size={14} style={{ transform: isCustomMode ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
-              </button>
-
-              {/* Custom Date Selector Panel */}
-              {isCustomMode && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '0.75rem', backgroundColor: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)', marginTop: '0.25rem' }}>
-                  {dateError && (
-                    <div style={{ fontSize: '0.75rem', color: 'var(--color-danger)', fontWeight: 600 }}>
-                      {dateError}
-                    </div>
-                  )}
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Start Date</label>
-                    <input
-                      type="date"
-                      value={customStart}
-                      onChange={(e) => setCustomStart(e.target.value)}
-                      style={{ padding: '0.375rem 0.5rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', fontSize: '0.8125rem' }}
-                    />
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>End Date</label>
-                    <input
-                      type="date"
-                      value={customEnd}
-                      onChange={(e) => setCustomEnd(e.target.value)}
-                      style={{ padding: '0.375rem 0.5rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', fontSize: '0.8125rem' }}
-                    />
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      style={{ flex: 1 }}
-                      onClick={() => { setIsCustomMode(false); setDateDropdownOpen(false); }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      className="btn btn-primary btn-sm"
-                      style={{ flex: 1 }}
-                      onClick={handleApplyCustomRange}
-                    >
-                      Apply Range
-                    </button>
-                  </div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem', padding: '0 0.25rem' }}>
+                  Select Period
                 </div>
-              )}
-            </div>
-          )}
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.375rem' }}>
+                  {[
+                    { id: 'today', label: 'Today' },
+                    { id: 'yesterday', label: 'Yesterday' },
+                    { id: '7days', label: 'Last 7 Days' },
+                    { id: '30days', label: 'Last 30 Days' },
+                    { id: 'this_month', label: 'This Month' },
+                    { id: 'last_month', label: 'Previous Month' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => handleSelectPreset(opt.id as PresetOption)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '0.5rem 0.75rem',
+                        borderRadius: 'var(--radius-sm)',
+                        border: activePreset === opt.id && !isCustomMode ? '1px solid var(--color-pink)' : '1px solid transparent',
+                        backgroundColor: activePreset === opt.id && !isCustomMode ? 'var(--bg-pink-pastel)' : 'var(--bg-subtle)',
+                        color: activePreset === opt.id && !isCustomMode ? 'var(--color-pink)' : 'var(--text-primary)',
+                        fontSize: '0.8125rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        textAlign: 'left'
+                      }}
+                    >
+                      <span>{opt.label}</span>
+                      {activePreset === opt.id && !isCustomMode && <Check size={14} />}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => setIsCustomMode(!isCustomMode)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: 'var(--radius-sm)',
+                    border: isCustomMode ? '1px solid var(--color-purple)' : '1px solid var(--border-color)',
+                    backgroundColor: isCustomMode ? 'var(--bg-purple-pastel)' : '#FFFFFF',
+                    color: isCustomMode ? 'var(--color-purple)' : 'var(--text-primary)',
+                    fontSize: '0.8125rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    marginTop: '0.25rem'
+                  }}
+                >
+                  <span>Custom Date Range</span>
+                  <ChevronDown size={14} style={{ transform: isCustomMode ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                </button>
+
+                {isCustomMode && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '0.75rem', backgroundColor: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)', marginTop: '0.25rem' }}>
+                    {dateError && (
+                      <div style={{ fontSize: '0.75rem', color: 'var(--color-danger)', fontWeight: 600 }}>
+                        {dateError}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Start Date</label>
+                      <input
+                        type="date"
+                        value={customStart}
+                        onChange={(e) => setCustomStart(e.target.value)}
+                        style={{ padding: '0.375rem 0.5rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', fontSize: '0.8125rem' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>End Date</label>
+                      <input
+                        type="date"
+                        value={customEnd}
+                        onChange={(e) => setCustomEnd(e.target.value)}
+                        style={{ padding: '0.375rem 0.5rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', fontSize: '0.8125rem' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        style={{ flex: 1 }}
+                        onClick={() => { setIsCustomMode(false); setDateDropdownOpen(false); }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        style={{ flex: 1 }}
+                        onClick={handleApplyCustomRange}
+                      >
+                        Apply Range
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Quick Period Filter Pills matching reference screenshot */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+            <button
+              onClick={() => handleSelectPreset('today')}
+              style={{
+                padding: '0.58rem 1.1rem',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.8125rem',
+                fontWeight: 700,
+                border: 'none',
+                cursor: 'pointer',
+                background: activePreset === 'today' ? 'var(--gradient-primary)' : 'var(--bg-subtle)',
+                color: activePreset === 'today' ? '#FFFFFF' : 'var(--text-secondary)',
+                boxShadow: activePreset === 'today' ? '0 4px 12px rgba(244, 63, 122, 0.35)' : 'none',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              Today
+            </button>
+            <button
+              onClick={() => handleSelectPreset('7days')}
+              style={{
+                padding: '0.58rem 1.1rem',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.8125rem',
+                fontWeight: 700,
+                border: 'none',
+                cursor: 'pointer',
+                background: activePreset === '7days' ? 'var(--gradient-primary)' : 'var(--bg-subtle)',
+                color: activePreset === '7days' ? '#FFFFFF' : 'var(--text-secondary)',
+                boxShadow: activePreset === '7days' ? '0 4px 12px rgba(244, 63, 122, 0.35)' : 'none',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              This Week
+            </button>
+            <button
+              onClick={() => handleSelectPreset('this_month')}
+              style={{
+                padding: '0.58rem 1.1rem',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.8125rem',
+                fontWeight: 700,
+                border: 'none',
+                cursor: 'pointer',
+                background: activePreset === 'this_month' ? 'var(--gradient-primary)' : 'var(--bg-subtle)',
+                color: activePreset === 'this_month' ? '#FFFFFF' : 'var(--text-secondary)',
+                boxShadow: activePreset === 'this_month' ? '0 4px 12px rgba(244, 63, 122, 0.35)' : 'none',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              This Month
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* 2. Four KPI Cards Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem' }}>
+      {/* 2. Four KPI Cards 2-Column Responsive Mobile Grid */}
+      <div className="mobile-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
         <KPICard
           title="Total Sales"
           value={formatCurrency(stats.totalSales || 0)}
@@ -372,143 +429,154 @@ export const DashboardPage: React.FC = () => {
         />
       </div>
 
-      {/* 3. Sales Overview & Quick Actions */}
-      <div className="dashboard-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
-        
-        {/* Sales Overview Chart */}
-        <div className="zylix-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-            <div>
-              <h3 style={{ fontSize: '1.125rem', fontWeight: 800 }}>Sales Overview</h3>
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Revenue analytics trend for {periodLabel}</p>
-            </div>
-            <div style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-pink)', backgroundColor: 'var(--bg-pink-pastel)', padding: '0.25rem 0.625rem', borderRadius: 'var(--radius-full)' }}>
-              Total: {formatCurrency(stats.totalSales || 0)}
-            </div>
+      {/* 3. Sales Overview Section */}
+      <div className="zylix-card" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h3 style={{ fontSize: '1.125rem', fontWeight: 800, color: 'var(--text-primary)' }}>Sales Overview</h3>
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setDateDropdownOpen(!dateDropdownOpen)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.375rem',
+                backgroundColor: '#FFFFFF',
+                border: '1px solid var(--border-color)',
+                padding: '0.375rem 0.75rem',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.8125rem',
+                fontWeight: 700,
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+              }}
+            >
+              <span>{periodLabel === 'Today' ? 'Last 7 Days' : periodLabel}</span>
+              <ChevronDown size={14} style={{ color: 'var(--text-muted)' }} />
+            </button>
           </div>
+        </div>
 
-          {/* SVG Smooth Area Chart with Real Data or Professional Empty State */}
-          <div style={{ width: '100%', height: '220px', position: 'relative' }}>
-            {totalChartSales === 0 ? (
-              <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)', border: '1px stroke var(--border-color)' }}>
-                <BarChart3 size={36} style={{ color: 'var(--text-muted)', marginBottom: '0.5rem', opacity: 0.6 }} />
-                <span style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--text-primary)' }}>No sales recorded for this period</span>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Sales created in POS will appear on this chart in real-time</span>
-              </div>
-            ) : (
-              <>
-                <svg width="100%" height="100%" viewBox="0 0 600 200" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
-                  <defs>
-                    <linearGradient id="salesGrad" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stopColor="#FF7A59" stopOpacity="0.4" />
-                      <stop offset="50%" stopColor="#F43F7A" stopOpacity="0.3" />
-                      <stop offset="100%" stopColor="#A855F7" stopOpacity="0.2" />
-                    </linearGradient>
-                    <linearGradient id="strokeGrad" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stopColor="#FF7A59" />
-                      <stop offset="50%" stopColor="#F43F7A" />
-                      <stop offset="100%" stopColor="#A855F7" />
-                    </linearGradient>
-                  </defs>
+        {/* Responsive Sales Chart */}
+        <div style={{ width: '100%', height: '180px', position: 'relative' }}>
+          <svg width="100%" height="100%" viewBox="0 0 600 160" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
+            <defs>
+              <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#F43F7A" stopOpacity="0.25" />
+                <stop offset="100%" stopColor="#F43F7A" stopOpacity="0.0" />
+              </linearGradient>
+            </defs>
 
-                  {/* Grid Lines */}
-                  <line x1="0" y1="40" x2="600" y2="40" stroke="#E2E8F0" strokeDasharray="4 4" />
-                  <line x1="0" y1="90" x2="600" y2="90" stroke="#E2E8F0" strokeDasharray="4 4" />
-                  <line x1="0" y1="140" x2="600" y2="140" stroke="#E2E8F0" strokeDasharray="4 4" />
+            {/* Subtle Grid Lines */}
+            <line x1="40" y1="20" x2="590" y2="20" stroke="#F1F5F9" strokeWidth="1" strokeDasharray="4 4" />
+            <line x1="40" y1="70" x2="590" y2="70" stroke="#F1F5F9" strokeWidth="1" strokeDasharray="4 4" />
+            <line x1="40" y1="120" x2="590" y2="120" stroke="#E2E8F0" strokeWidth="1" />
 
-                  {/* Dynamic SVG Area & Line generated from salesOverTime */}
-                  {(() => {
-                    if (salesOverTime.length === 0) return null;
-                    const points = salesOverTime.map((item, idx) => {
-                      const x = (idx / Math.max(salesOverTime.length - 1, 1)) * 560 + 20;
-                      const y = 180 - (item.amount / maxChartVal) * 140;
-                      return { x, y, amount: item.amount, day: item.day };
-                    });
+            {/* Y-Axis Labels */}
+            <text x="5" y="24" fill="#94A3B8" fontSize="11" fontWeight="600">₹10K</text>
+            <text x="5" y="74" fill="#94A3B8" fontSize="11" fontWeight="600">₹5K</text>
+            <text x="5" y="124" fill="#94A3B8" fontSize="11" fontWeight="600">₹0</text>
 
-                    const pathD = `M ${points[0].x},${points[0].y} ` + points.slice(1).map(p => `L ${p.x},${p.y}`).join(' ');
-                    const areaD = `${pathD} L ${points[points.length - 1].x},180 L ${points[0].x},180 Z`;
+            {/* Line and Area */}
+            {(() => {
+              const displayItems = salesOverTime.length > 0 ? salesOverTime : [
+                { day: 'Oct 1', amount: 0 },
+                { day: 'Oct 2', amount: 0 },
+                { day: 'Oct 3', amount: 0 },
+                { day: 'Oct 4', amount: 0 },
+                { day: 'Oct 5', amount: 0 },
+                { day: 'Oct 6', amount: 0 },
+                { day: 'Oct 7', amount: 0 },
+              ];
 
-                    return (
-                      <>
-                        <path d={areaD} fill="url(#salesGrad)" />
-                        <path d={pathD} fill="none" stroke="url(#strokeGrad)" strokeWidth="3.5" strokeLinecap="round" />
-                        {points.map((p, i) => (
-                          <circle key={i} cx={p.x} cy={p.y} r="4" fill="#F43F7A" stroke="#FFFFFF" strokeWidth="2" />
-                        ))}
-                      </>
-                    );
-                  })()}
-                </svg>
+              const points = displayItems.map((item, idx) => {
+                const x = (idx / Math.max(displayItems.length - 1, 1)) * 530 + 50;
+                const y = 120 - (item.amount / maxChartVal) * 100;
+                return { x, y, amount: item.amount, day: item.day };
+              });
 
-                {/* X-Axis Labels */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.75rem', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                  {salesOverTime.slice(0, 10).map((d, idx) => (
-                    <span key={idx}>{d.day}</span>
+              const pathD = `M ${points[0].x},${points[0].y} ` + points.slice(1).map(p => `L ${p.x},${p.y}`).join(' ');
+              const areaD = `${pathD} L ${points[points.length - 1].x},120 L ${points[0].x},120 Z`;
+
+              return (
+                <>
+                  <path d={areaD} fill="url(#salesGrad)" />
+                  <path d={pathD} fill="none" stroke="#F43F7A" strokeWidth="3" strokeLinecap="round" />
+                  {points.map((p, i) => (
+                    <circle key={i} cx={p.x} cy={p.y} r="4" fill="#F43F7A" stroke="#FFFFFF" strokeWidth="2" />
                   ))}
-                </div>
-              </>
-            )}
+                </>
+              );
+            })()}
+          </svg>
+
+          {/* X-Axis Labels */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: '40px', paddingRight: '10px', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+            {(salesOverTime.length > 0 ? salesOverTime : [
+              { day: 'Oct 1' }, { day: 'Oct 2' }, { day: 'Oct 3' }, { day: 'Oct 4' }, { day: 'Oct 5' }, { day: 'Oct 6' }, { day: 'Oct 7' }
+            ]).map((d, idx) => (
+              <span key={idx}>{d.day}</span>
+            ))}
           </div>
         </div>
+      </div>
 
-        {/* Quick Actions Panel */}
-        <div className="zylix-card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div>
-            <h3 style={{ fontSize: '1.125rem', fontWeight: 800 }}>Quick Actions</h3>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Instant store operations</p>
+      {/* 4. Quick Action Banner Cards matching reference screenshot */}
+      <div className="mobile-quick-actions" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
+        {/* Start POS Billing */}
+        <Link
+          to="/pos"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'linear-gradient(135deg, #FF7A59 0%, #F43F7A 100%)',
+            borderRadius: 'var(--radius-lg)',
+            padding: '1.25rem 1.25rem',
+            color: '#FFFFFF',
+            boxShadow: '0 8px 20px rgba(244, 63, 122, 0.3)',
+            textDecoration: 'none',
+            transition: 'transform 0.2s ease, boxShadow 0.2s ease',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(255, 255, 255, 0.2)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Receipt size={22} style={{ color: '#FFFFFF' }} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '1rem', lineHeight: '1.2', color: '#FFFFFF' }}>Start POS Billing</div>
+              <div style={{ fontSize: '0.8125rem', color: 'rgba(255, 255, 255, 0.85)', marginTop: '0.125rem' }}>Create new sale</div>
+            </div>
           </div>
+          <ArrowRight size={20} style={{ color: '#FFFFFF' }} />
+        </Link>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', flex: 1, justifyContent: 'center' }}>
-            <Link
-              to="/pos"
-              className="btn btn-primary btn-lg"
-              style={{ justifyContent: 'space-between', borderRadius: 'var(--radius-md)', padding: '0.875rem 1.25rem' }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <ShoppingCart size={20} />
-                <span>New Sale</span>
-              </div>
-              <ArrowRight size={18} />
-            </Link>
-
-            <Link
-              to="/products"
-              className="btn btn-secondary btn-lg"
-              style={{ justifyContent: 'space-between', borderRadius: 'var(--radius-md)', padding: '0.875rem 1.25rem' }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <Package size={20} style={{ color: 'var(--color-pink)' }} />
-                <span>Add Product</span>
-              </div>
-              <ArrowRight size={18} style={{ color: 'var(--text-muted)' }} />
-            </Link>
-
-            <Link
-              to="/inventory"
-              className="btn btn-secondary btn-lg"
-              style={{ justifyContent: 'space-between', borderRadius: 'var(--radius-md)', padding: '0.875rem 1.25rem' }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <Boxes size={20} style={{ color: 'var(--color-purple)' }} />
-                <span>Manage Inventory</span>
-              </div>
-              <ArrowRight size={18} style={{ color: 'var(--text-muted)' }} />
-            </Link>
-
-            <Link
-              to="/reports"
-              className="btn btn-secondary btn-lg"
-              style={{ justifyContent: 'space-between', borderRadius: 'var(--radius-md)', padding: '0.875rem 1.25rem' }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <BarChart3 size={20} style={{ color: 'var(--color-coral)' }} />
-                <span>View Reports</span>
-              </div>
-              <ArrowRight size={18} style={{ color: 'var(--text-muted)' }} />
-            </Link>
+        {/* Manage Products */}
+        <Link
+          to="/products"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'linear-gradient(135deg, #8B5CF6 0%, #6366F1 100%)',
+            borderRadius: 'var(--radius-lg)',
+            padding: '1.25rem 1.25rem',
+            color: '#FFFFFF',
+            boxShadow: '0 8px 20px rgba(139, 92, 246, 0.3)',
+            textDecoration: 'none',
+            transition: 'transform 0.2s ease, boxShadow 0.2s ease',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(255, 255, 255, 0.2)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Package size={22} style={{ color: '#FFFFFF' }} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '1rem', lineHeight: '1.2', color: '#FFFFFF' }}>Manage Products</div>
+              <div style={{ fontSize: '0.8125rem', color: 'rgba(255, 255, 255, 0.85)', marginTop: '0.125rem' }}>View and edit</div>
+            </div>
           </div>
-        </div>
-
+          <ArrowRight size={20} style={{ color: '#FFFFFF' }} />
+        </Link>
       </div>
 
       {/* 4. Recent Sales & Top Products Row */}

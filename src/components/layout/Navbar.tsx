@@ -251,10 +251,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileSidebar }) => {
     }
   };
 
+  const [showMobileSearch, setShowMobileSearch] = useState(false);
+
   return (
     <header className="app-header">
-      {/* Mobile Hamburger & Search Input Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: '1', maxWidth: '440px', minWidth: 0 }}>
+      {/* Mobile Hamburger & Brand & Search Input Bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1', minWidth: 0 }}>
         {onToggleMobileSidebar && (
           <button
             onClick={onToggleMobileSidebar}
@@ -266,7 +268,23 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileSidebar }) => {
           </button>
         )}
 
-        <form onSubmit={handleSearchSubmit} style={{ flex: '1', position: 'relative', minWidth: 0 }} className="search-container">
+        {/* Mobile Brand Logo */}
+        <div className="mobile-brand-logo" style={{ display: 'none', alignItems: 'center', flexShrink: 0 }}>
+          <ZylixLogo size={32} />
+        </div>
+
+        {/* Desktop / Expanded Search Bar */}
+        <form
+          onSubmit={handleSearchSubmit}
+          style={{
+            flex: '1',
+            position: 'relative',
+            minWidth: 0,
+            maxWidth: '420px',
+            display: showMobileSearch ? 'block' : undefined
+          }}
+          className={`search-container ${showMobileSearch ? 'mobile-search-active' : ''}`}
+        >
           <Search
             size={18}
             style={{
@@ -286,7 +304,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileSidebar }) => {
             style={{
               paddingLeft: '38px',
               paddingRight: '48px',
-              height: '40px',
+              height: '38px',
               borderRadius: 'var(--radius-md)',
               backgroundColor: 'var(--bg-subtle)',
               border: '1px solid var(--border-color)',
@@ -315,14 +333,26 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileSidebar }) => {
       </div>
 
       {/* Right Controls Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }} className="header-actions">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }} className="header-actions">
+        {/* Mobile Search Toggle Button */}
+        <button
+          onClick={() => setShowMobileSearch(!showMobileSearch)}
+          className="mobile-search-toggle btn btn-secondary btn-sm"
+          style={{ width: '36px', height: '36px', padding: 0, borderRadius: 'var(--radius-md)', display: 'none', alignItems: 'center', justifyContent: 'center' }}
+          title="Search"
+        >
+          <Search size={18} style={{ color: 'var(--text-secondary)' }} />
+        </button>
+
         {/* Network Status Pill */}
-        {renderNetworkBadge()}
+        <div className="network-badge-wrapper">
+          {renderNetworkBadge()}
+        </div>
 
         {/* Quick Launch POS Terminal */}
-        <Link to="/pos" className="btn btn-primary btn-sm" style={{ height: '38px', gap: '0.5rem', borderRadius: 'var(--radius-md)' }}>
-          <ShoppingCart size={16} />
-          <span>POS Terminal</span>
+        <Link to="/pos" className="btn btn-primary btn-sm pos-terminal-badge" style={{ height: '36px', gap: '0.375rem', borderRadius: 'var(--radius-md)', padding: '0 0.625rem' }}>
+          <ShoppingCart size={15} />
+          <span className="pos-btn-text">POS Terminal</span>
         </Link>
 
         {/* Notifications Icon with Dropdown */}
@@ -331,11 +361,14 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileSidebar }) => {
             onClick={handleToggleNotifications}
             className="btn btn-secondary btn-sm"
             style={{
-              width: '38px',
-              height: '38px',
+              width: '36px',
+              height: '36px',
               padding: 0,
               borderRadius: 'var(--radius-md)',
               position: 'relative',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
             }}
             title="Notifications"
           >
@@ -344,15 +377,15 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileSidebar }) => {
               <span
                 style={{
                   position: 'absolute',
-                  top: '-4px',
-                  right: '-4px',
-                  minWidth: '18px',
-                  height: '18px',
-                  padding: '0 4px',
-                  borderRadius: '9px',
+                  top: '-3px',
+                  right: '-3px',
+                  minWidth: '16px',
+                  height: '16px',
+                  padding: '0 3px',
+                  borderRadius: '8px',
                   backgroundColor: 'var(--color-pink)',
                   color: '#FFFFFF',
-                  fontSize: '0.6875rem',
+                  fontSize: '0.625rem',
                   fontWeight: 800,
                   display: 'flex',
                   alignItems: 'center',
@@ -372,7 +405,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileSidebar }) => {
                 position: 'absolute',
                 right: 0,
                 top: '115%',
-                width: '340px',
+                width: '320px',
+                maxWidth: 'calc(100vw - 1.5rem)',
                 backgroundColor: '#FFFFFF',
                 border: '1px solid var(--border-color)',
                 borderRadius: 'var(--radius-md)',
@@ -514,14 +548,15 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileSidebar }) => {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.625rem',
+                gap: '0.375rem',
                 background: 'var(--bg-subtle)',
                 border: '1px solid var(--border-color)',
-                padding: '0.375rem 0.75rem',
-                borderRadius: 'var(--radius-md)',
+                padding: '0.25rem 0.5rem',
+                borderRadius: 'var(--radius-full)',
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
               }}
+              className="user-profile-button"
             >
               <div
                 style={{
@@ -535,12 +570,13 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileSidebar }) => {
                   color: '#FFFFFF',
                   fontWeight: 700,
                   fontSize: '0.8125rem',
+                  flexShrink: 0,
                 }}
               >
                 {user.name.charAt(0).toUpperCase()}
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left' }} className="user-profile-details">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
                   <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                     {user.name}
@@ -564,7 +600,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileSidebar }) => {
                   position: 'absolute',
                   right: 0,
                   top: '115%',
-                  width: '200px',
+                  width: '210px',
                   backgroundColor: '#FFFFFF',
                   border: '1px solid var(--border-color)',
                   borderRadius: 'var(--radius-md)',
@@ -573,6 +609,11 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileSidebar }) => {
                   zIndex: 200,
                 }}
               >
+                <div style={{ padding: '0.5rem 0.75rem', borderBottom: '1px solid var(--border-color)', marginBottom: '0.25rem' }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.8125rem', color: 'var(--text-primary)' }}>{user.name}</div>
+                  <div style={{ fontSize: '0.6875rem', color: 'var(--text-secondary)' }}>{business?.name || 'ZYLIX Store'} • ({user.role})</div>
+                </div>
+
                 <Link
                   to="/profile"
                   onClick={() => setShowDropdown(false)}
