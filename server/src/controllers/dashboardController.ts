@@ -239,14 +239,23 @@ export async function getDashboardStats(req: Request, res: Response) {
       LIMIT 5
     `).all(businessId, startStr, endStr);
 
-    // 9. Payment Methods Distribution in Date Range
-    const paymentMethods = db.prepare(`
+    // 9. Payment Methods Distribution in Date Range (with fallback to sales table)
+    let paymentMethods = db.prepare(`
       SELECT p.payment_method, COUNT(p.id) as count, SUM(p.amount) as total
       FROM payments p
       JOIN sales s ON p.sale_id = s.id AND p.business_id = s.business_id
       WHERE p.business_id = ? AND p.status = 'COMPLETED' AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)
       GROUP BY p.payment_method
-    `).all(businessId, startStr, endStr);
+    `).all(businessId, startStr, endStr) as any[];
+
+    if (!paymentMethods || paymentMethods.length === 0) {
+      paymentMethods = db.prepare(`
+        SELECT s.payment_method, COUNT(s.id) as count, SUM(s.grand_total) as total
+        FROM sales s
+        WHERE s.business_id = ? AND s.status != 'CANCELLED' AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)
+        GROUP BY s.payment_method
+      `).all(businessId, startStr, endStr) as any[];
+    }
 
     // 10. Recent Sales List (Latest 5 Sales)
     const recentSales = db.prepare(`
