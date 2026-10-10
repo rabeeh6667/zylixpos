@@ -26,6 +26,7 @@ import { seedDatabase } from './db/seed.ts';
 import notificationRoutes from './routes/notifications.ts';
 import systemRoutes from './routes/system.ts';
 import tenantRoutes from './routes/tenants.ts';
+import supplierRoutes from './routes/suppliers.ts';
 
 const app = express();
 
@@ -93,6 +94,7 @@ app.use('/api/tenants', tenantRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/inventory', inventoryRoutes);
+app.use('/api/suppliers', supplierRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/sales', salesRoutes);
 app.use('/api/pos', posRoutes);

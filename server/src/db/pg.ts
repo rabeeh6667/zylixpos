@@ -358,6 +358,20 @@ export async function initPgDatabase(customPool?: pg.Pool): Promise<void> {
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS suppliers (
+      id VARCHAR(255) PRIMARY KEY,
+      business_id VARCHAR(255) NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      name VARCHAR(255) NOT NULL,
+      contact_person VARCHAR(255),
+      phone VARCHAR(255),
+      email VARCHAR(255),
+      category VARCHAR(255),
+      address TEXT,
+      status VARCHAR(50) DEFAULT 'ACTIVE',
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+
     -- Indexes
     CREATE INDEX IF NOT EXISTS idx_users_business ON users(business_id);
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -390,6 +404,7 @@ export async function initPgDatabase(customPool?: pg.Pool): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(business_id, user_id);
     CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(business_id, is_read);
     CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(business_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_suppliers_business ON suppliers(business_id);
   `;
 
   const statements = schema.split(';').map(s => s.trim()).filter(s => s.length > 0);

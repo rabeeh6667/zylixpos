@@ -195,63 +195,9 @@ export const CustomersPage: React.FC = () => {
 };
 
 /* ====================================================================
- * 2. SUPPLIERS PAGE
+ * 2. SUPPLIERS PAGE (Exported from dedicated SuppliersPage component)
  * ==================================================================== */
-export const SuppliersPage: React.FC = () => {
-  const { showToast } = useToast();
-  const [suppliers, setSuppliers] = useState<any[]>([
-    { id: '1', name: 'Metro Wholesalers Ltd', contact: 'Rajesh Kumar', phone: '+91 9811223344', email: 'orders@metrowholesale.com', category: 'General Goods' },
-    { id: '2', name: 'Apex Dairy Supplies', contact: 'Sunil Verma', phone: '+91 9877665544', email: 'dairy@apexdairy.com', category: 'Dairy & Beverages' },
-    { id: '3', name: 'Global Beverage Importers', contact: 'Anjali Gupta', phone: '+91 9911002299', email: 'sales@globalbev.in', category: 'Beverages' },
-  ]);
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
-          <h1 style={{ fontSize: '1.625rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
-            Suppliers & Vendors
-          </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Manage wholesaler contact details, categories, and purchase orders.
-          </p>
-        </div>
-        <button onClick={() => showToast('Supplier creation dialog ready', 'info')} className="btn btn-primary">
-          <Truck size={18} /> Add Supplier
-        </button>
-      </div>
-
-      <div className="zylix-table-container">
-        <table className="zylix-table">
-          <thead>
-            <tr>
-              <th>Supplier Name</th>
-              <th>Contact Person</th>
-              <th>Phone</th>
-              <th>Email</th>
-              <th>Category</th>
-            </tr>
-          </thead>
-          <tbody>
-            {suppliers.map((s) => (
-              <tr key={s.id}>
-                <td>
-                  <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{s.name}</div>
-                </td>
-                <td style={{ color: 'var(--text-secondary)' }}>{s.contact}</td>
-                <td style={{ color: 'var(--text-secondary)' }}>{s.phone}</td>
-                <td style={{ color: 'var(--text-secondary)' }}>{s.email}</td>
-                <td>
-                  <span className="badge badge-manager">{s.category}</span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-};
+export { SuppliersPage } from './SuppliersPage.tsx';
 
 /* ====================================================================
  * 3. EXPENSES PAGE
