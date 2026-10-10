@@ -21,7 +21,7 @@ import { ProfilePage } from './pages/ProfilePage.tsx';
 import { ActivityPage } from './pages/ActivityPage.tsx';
 import { TenantsPage } from './pages/TenantsPage.tsx';
 
-import { SuppliersPage } from './pages/SectionPlaceholders.tsx';
+import { SuppliersPage } from './pages/SuppliersPage.tsx';
 
 export const App: React.FC = () => {
   return (
