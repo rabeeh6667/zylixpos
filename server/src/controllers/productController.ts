@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { db } from '../db/index.ts';
+import { query, queryOne, execute, transaction } from '../db/dbAdapter.ts';
 import { cryptoUUID } from '../utils/crypto.ts';
 import { logAuditEvent } from '../utils/auditLogger.ts';
 import { z } from 'zod';
@@ -62,19 +62,19 @@ export async function getProducts(req: Request, res: Response) {
     const safeSortBy = validSortFields.includes(String(sortBy)) ? String(sortBy) : 'name';
     const safeOrder = String(sortOrder).toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
 
-    const countRow = db.prepare(`
+    const countRow = (await queryOne<any>(`
       SELECT COUNT(p.id) as total
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id
       ${whereClause}
-    `).get(...params) as any || { total: 0 };
+    `, params)) || { total: 0 };
 
     const total = Number(countRow.total || 0);
     const pageNum = page ? Math.max(1, parseInt(String(page), 10) || 1) : 1;
     const limitNum = limit ? Math.min(500, Math.max(1, parseInt(String(limit), 10) || 50)) : 0;
     const totalPages = limitNum > 0 ? Math.ceil(total / limitNum) : 1;
 
-    let query = `
+    let sql = `
       SELECT p.*, c.name as category_name
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id
@@ -84,11 +84,11 @@ export async function getProducts(req: Request, res: Response) {
 
     const queryParams = [...params];
     if (limitNum > 0) {
-      query += ` LIMIT ? OFFSET ?`;
+      sql += ` LIMIT ? OFFSET ?`;
       queryParams.push(limitNum, (pageNum - 1) * limitNum);
     }
 
-    const products = db.prepare(query).all(...queryParams);
+    const products = await query(sql, queryParams);
 
     return res.json({
       success: true,
@@ -110,12 +110,12 @@ export async function getProductById(req: Request, res: Response) {
     const { id } = req.params;
 
     // ENFORCE TENANT ISOLATION
-    const product = db.prepare(`
+    const product = await queryOne<any>(`
       SELECT p.*, c.name as category_name
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id
       WHERE p.id = ? AND p.business_id = ?
-    `).get(id, req.businessId) as any;
+    `, [id, req.businessId]);
 
     if (!product) {
       return res.status(404).json({
@@ -126,14 +126,14 @@ export async function getProductById(req: Request, res: Response) {
     }
 
     // Fetch product stock transaction history
-    const history = db.prepare(`
+    const history = await query(`
       SELECT it.*, u.name as user_name
       FROM inventory_transactions it
       LEFT JOIN users u ON it.user_id = u.id
       WHERE it.product_id = ? AND it.business_id = ?
       ORDER BY it.created_at DESC
       LIMIT 50
-    `).all(id, req.businessId);
+    `, [id, req.businessId]);
 
     return res.json({
       success: true,
@@ -176,7 +176,7 @@ export async function createProduct(req: Request, res: Response) {
 
     // Check Barcode Uniqueness per business
     if (d.barcode && d.barcode.trim()) {
-      const existingBarcode = db.prepare('SELECT id FROM products WHERE business_id = ? AND barcode = ? AND status != \'ARCHIVED\'').get(req.businessId, d.barcode.trim());
+      const existingBarcode = await queryOne('SELECT id FROM products WHERE business_id = ? AND barcode = ? AND status != \'ARCHIVED\'', [req.businessId, d.barcode.trim()]);
       if (existingBarcode) {
         return res.status(409).json({
           success: false,
@@ -187,7 +187,7 @@ export async function createProduct(req: Request, res: Response) {
 
     // Check SKU Uniqueness per business
     if (d.sku && d.sku.trim()) {
-      const existingSku = db.prepare('SELECT id FROM products WHERE business_id = ? AND sku = ? AND status != \'ARCHIVED\'').get(req.businessId, d.sku.trim());
+      const existingSku = await queryOne('SELECT id FROM products WHERE business_id = ? AND sku = ? AND status != \'ARCHIVED\'', [req.businessId, d.sku.trim()]);
       if (existingSku) {
         return res.status(409).json({
           success: false,
@@ -199,14 +199,14 @@ export async function createProduct(req: Request, res: Response) {
     const id = cryptoUUID();
     const initStock = d.currentStock || 0;
 
-    db.transaction(() => {
+    await transaction(async (tx) => {
       // 1. Insert product
-      db.prepare(`
+      await tx.execute(`
         INSERT INTO products (
           id, business_id, category_id, name, sku, barcode, brand, description,
           purchase_price, selling_price, tax_percentage, current_stock, min_stock, unit, status
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE')
-      `).run(
+      `, [
         id,
         req.businessId,
         d.categoryId || null,
@@ -221,16 +221,16 @@ export async function createProduct(req: Request, res: Response) {
         initStock,
         d.minimumStock !== undefined ? d.minimumStock : 5,
         d.unit || 'pcs'
-      );
+      ]);
 
       // 2. Initial stock inventory transaction if stock > 0
       if (initStock > 0) {
-        db.prepare(`
+        await tx.execute(`
           INSERT INTO inventory_transactions (id, business_id, product_id, transaction_type, quantity, notes, user_id)
           VALUES (?, ?, ?, 'STOCK_IN', ?, 'Initial product stock creation', ?)
-        `).run(cryptoUUID(), req.businessId, id, initStock, req.user?.userId || null);
+        `, [cryptoUUID(), req.businessId, id, initStock, req.user?.userId || null]);
       }
-    })();
+    });
 
     logAuditEvent({
       businessId: req.businessId!,
@@ -241,7 +241,7 @@ export async function createProduct(req: Request, res: Response) {
       metadata: { name: d.name, sellingPrice: d.sellingPrice, barcode: d.barcode, initialStock: initStock },
     });
 
-    const newProd = db.prepare('SELECT p.*, p.current_stock as stock, p.min_stock as minStock FROM products p WHERE p.id = ?').get(id);
+    const newProd = await queryOne('SELECT p.*, p.current_stock as stock, p.min_stock as minStock FROM products p WHERE p.id = ?', [id]);
 
     return res.status(201).json({
       success: true,
@@ -259,7 +259,7 @@ export async function updateProduct(req: Request, res: Response) {
     const { id } = req.params;
 
     // ENFORCE TENANT ISOLATION
-    const existing = db.prepare('SELECT * FROM products WHERE id = ? AND business_id = ?').get(id, req.businessId) as any;
+    const existing = await queryOne<any>('SELECT * FROM products WHERE id = ? AND business_id = ?', [id, req.businessId]);
     if (!existing) {
       return res.status(404).json({
         success: false,
@@ -280,7 +280,7 @@ export async function updateProduct(req: Request, res: Response) {
 
     // Validate unique barcode
     if (d.barcode && d.barcode.trim() !== existing.barcode) {
-      const dupBarcode = db.prepare('SELECT id FROM products WHERE business_id = ? AND barcode = ? AND id != ? AND status != \'ARCHIVED\'').get(req.businessId, d.barcode.trim(), id);
+      const dupBarcode = await queryOne('SELECT id FROM products WHERE business_id = ? AND barcode = ? AND id != ? AND status != \'ARCHIVED\'', [req.businessId, d.barcode.trim(), id]);
       if (dupBarcode) {
         return res.status(409).json({
           success: false,
@@ -311,14 +311,14 @@ export async function updateProduct(req: Request, res: Response) {
     updates.push('updated_at = CURRENT_TIMESTAMP');
     params.push(id, req.businessId);
 
-    db.prepare(`UPDATE products SET ${updates.join(', ')} WHERE id = ? AND business_id = ?`).run(...params);
+    await execute(`UPDATE products SET ${updates.join(', ')} WHERE id = ? AND business_id = ?`, params);
 
     logAuditEvent({
       businessId: req.businessId!,
       userId: req.user?.userId,
       action: 'PRODUCT_UPDATED',
       entity: 'product',
-      entityId: id,
+      entityId: String(id),
       metadata: d,
     });
 
@@ -336,7 +336,7 @@ export async function deleteProduct(req: Request, res: Response) {
     const { id } = req.params;
 
     // ENFORCE TENANT ISOLATION
-    const existing = db.prepare('SELECT * FROM products WHERE id = ? AND business_id = ?').get(id, req.businessId);
+    const existing = await queryOne('SELECT * FROM products WHERE id = ? AND business_id = ?', [id, req.businessId]);
     if (!existing) {
       return res.status(404).json({
         success: false,
@@ -345,14 +345,14 @@ export async function deleteProduct(req: Request, res: Response) {
     }
 
     // Soft archive product to preserve inventory history and sales reports
-    db.prepare(`UPDATE products SET status = 'ARCHIVED', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND business_id = ?`).run(id, req.businessId);
+    await execute(`UPDATE products SET status = 'ARCHIVED', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND business_id = ?`, [id, req.businessId]);
 
     logAuditEvent({
       businessId: req.businessId!,
       userId: req.user?.userId,
       action: 'PRODUCT_ARCHIVED',
       entity: 'product',
-      entityId: id,
+      entityId: String(id),
     });
 
     return res.json({

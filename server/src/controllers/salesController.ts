@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { db } from '../db/index.ts';
+import { query, queryOne } from '../db/dbAdapter.ts';
 
 export async function getSales(req: Request, res: Response) {
   try {
@@ -41,18 +41,18 @@ export async function getSales(req: Request, res: Response) {
       params.push(String(endDate));
     }
 
-    const countRow = db.prepare(`
+    const countRow = (await queryOne<any>(`
       SELECT COUNT(s.id) as total
       FROM sales s
       LEFT JOIN users u ON s.user_id = u.id
       LEFT JOIN customers c ON s.customer_id = c.id
       ${whereClause}
-    `).get(...params) as any || { total: 0 };
+    `, params)) || { total: 0 };
 
     const total = Number(countRow.total || 0);
     const totalPages = Math.ceil(total / limitNum);
 
-    const sales = db.prepare(`
+    const sales = await query(`
       SELECT s.*, u.name as cashier_name, c.name as customer_name
       FROM sales s
       LEFT JOIN users u ON s.user_id = u.id
@@ -60,7 +60,7 @@ export async function getSales(req: Request, res: Response) {
       ${whereClause}
       ORDER BY s.created_at DESC
       LIMIT ? OFFSET ?
-    `).all(...params, limitNum, offset);
+    `, [...params, limitNum, offset]);
 
     return res.json({
       success: true,
@@ -82,13 +82,13 @@ export async function getSaleById(req: Request, res: Response) {
     const { id } = req.params;
 
     // ENFORCE TENANT ISOLATION
-    const sale = db.prepare(`
+    const sale = await queryOne<any>(`
       SELECT s.*, u.name as cashier_name, c.name as customer_name, c.email as customer_email, c.phone as customer_phone
       FROM sales s
       LEFT JOIN users u ON s.user_id = u.id
       LEFT JOIN customers c ON s.customer_id = c.id
       WHERE s.id = ? AND s.business_id = ?
-    `).get(id, req.businessId) as any;
+    `, [id, req.businessId]);
 
     if (!sale) {
       return res.status(404).json({
@@ -97,16 +97,16 @@ export async function getSaleById(req: Request, res: Response) {
       });
     }
 
-    const items = db.prepare(`
+    const items = await query(`
       SELECT si.*, p.sku, p.barcode
       FROM sale_items si
       LEFT JOIN products p ON si.product_id = p.id
       WHERE si.sale_id = ? AND si.business_id = ?
-    `).all(id, req.businessId);
+    `, [id, req.businessId]);
 
-    const payments = db.prepare(`
+    const payments = await query(`
       SELECT * FROM payments WHERE sale_id = ? AND business_id = ?
-    `).all(id, req.businessId);
+    `, [id, req.businessId]);
 
     return res.json({
       success: true,

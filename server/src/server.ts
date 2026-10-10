@@ -1,7 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import { config } from './config/index.ts';
-import { initDatabase } from './db/index.ts';
+import { initDb } from './db/dbAdapter.ts';
+
+// Initialize Database & Tables
+await initDb();
 import { errorHandler } from './middleware/errorHandler.ts';
 
 // Route imports
@@ -59,8 +62,7 @@ app.use(
 );
 app.use(express.json());
 
-// Initialize Database & Tables
-initDatabase();
+
 
 // Demo only: create sample accounts when SEED_DEMO_DATA=true
 if (process.env.SEED_DEMO_DATA === 'true') {
