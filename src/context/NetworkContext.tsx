@@ -1,6 +1,18 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { apiFetch, API_BASE } from '../services/api.ts';
-export type NetworkStatus = 'online' | 'offline' | 'reconnecting' | 'server_unavailable';
+
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from 'react';
+import { API_BASE } from '../services/api';
+
+export type NetworkStatus =
+  | 'online'
+  | 'offline'
+  | 'reconnecting'
+  | 'server_unavailable';
 
 interface NetworkContextType {
   networkStatus: NetworkStatus;
@@ -14,49 +26,53 @@ const NetworkContext = createContext<NetworkContextType>({
   checkConnection: async () => true,
 });
 
-export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const NetworkProvider: React.FC<{
+  children: React.ReactNode;
+}> = ({ children }) => {
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus>(
     navigator.onLine ? 'online' : 'offline'
   );
 
-  const checkConnection = async (): Promise<boolean> => {
+  const checkConnection = useCallback(async (): Promise<boolean> => {
     if (!navigator.onLine) {
       setNetworkStatus('offline');
       return false;
     }
 
-    try {
-      // AbortController to enforce 4-second API timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-      const res = await fetch(`${API_BASE}/health`, {
+    try {
+      // API_BASE already ends with /api, so this resolves to /api/health.
+      const healthUrl = `${API_BASE.replace(/\/+$/, '')}/health`;
+
+      const response = await fetch(healthUrl, {
+        method: 'GET',
         signal: controller.signal,
         cache: 'no-store',
       });
-      clearTimeout(timeoutId);
 
-      if (res.ok) {
+      if (response.ok) {
         setNetworkStatus('online');
         return true;
-      } else {
-        setNetworkStatus('server_unavailable');
-        return false;
       }
-    } catch (e: any) {
-      if (!navigator.onLine) {
-        setNetworkStatus('offline');
-      } else {
-        setNetworkStatus('server_unavailable');
-      }
+
+      setNetworkStatus('server_unavailable');
       return false;
+    } catch {
+      setNetworkStatus(
+        navigator.onLine ? 'server_unavailable' : 'offline'
+      );
+      return false;
+    } finally {
+      clearTimeout(timeoutId);
     }
-  };
+  }, []);
 
   useEffect(() => {
     const handleOnline = () => {
       setNetworkStatus('reconnecting');
-      checkConnection();
+      void checkConnection();
     };
 
     const handleOffline = () => {
@@ -66,20 +82,18 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Initial check
-    checkConnection();
+    void checkConnection();
 
-    // Periodic ping every 20 seconds
-    const interval = setInterval(() => {
-      checkConnection();
+    const intervalId = window.setInterval(() => {
+      void checkConnection();
     }, 20000);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      clearInterval(interval);
+      window.clearInterval(intervalId);
     };
-  }, []);
+  }, [checkConnection]);
 
   return (
     <NetworkContext.Provider
