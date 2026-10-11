@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { db } from '../db/index.ts';
+import { queryOne, execute } from '../db/dbAdapter.ts';
 import { logAuditEvent } from '../utils/auditLogger.ts';
 import { z } from 'zod';
 
@@ -14,7 +14,7 @@ const updateBusinessSchema = z.object({
 
 export async function getBusiness(req: Request, res: Response) {
   try {
-    const business = db.prepare('SELECT * FROM businesses WHERE id = ?').get(req.businessId);
+    const business = await queryOne('SELECT * FROM businesses WHERE id = ?', [req.businessId]);
     if (!business) {
       return res.status(404).json({ success: false, message: 'Business profile not found.' });
     }
@@ -37,11 +37,14 @@ export async function updateBusiness(req: Request, res: Response) {
 
     const { name, businessType, phone, email, address, logo } = parseResult.data;
 
-    db.prepare(`
+    await execute(
+      `
       UPDATE businesses
       SET name = ?, business_type = ?, phone = ?, email = ?, address = ?, logo = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(name, businessType, phone || null, email || null, address || null, logo || null, req.businessId);
+    `,
+      [name, businessType, phone || null, email || null, address || null, logo || null, req.businessId]
+    );
 
     logAuditEvent({
       businessId: req.businessId!,

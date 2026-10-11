@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt.ts';
-import { db } from '../db/index.ts';
+import { queryOne } from '../db/dbAdapter.ts';
 
 export function authenticate(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
@@ -67,7 +67,7 @@ export function requireRole(
  * Platform-owner status is verified from the database instead of
  * relying only on the value stored inside an existing JWT.
  */
-export function requirePlatformOwner(
+export async function requirePlatformOwner(
   req: Request,
   res: Response,
   next: NextFunction
@@ -89,21 +89,22 @@ authorized=false`);
     });
   }
 
-  const platformOwner = db
-    .prepare(`
+  const platformOwner = await queryOne<{
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    status: string;
+    business_id: string;
+    is_platform_owner: number;
+  }>(
+    `
       SELECT id, name, email, role, status, business_id, is_platform_owner
       FROM users
       WHERE id = ?
-    `)
-    .get(req.user.userId) as {
-      id: string;
-      name: string;
-      email: string;
-      role: string;
-      status: string;
-      business_id: string;
-      is_platform_owner: number;
-    } | undefined;
+    `,
+    [req.user.userId]
+  );
 
   const normalizedEmail = String(platformOwner?.email || '').trim().toLowerCase();
 

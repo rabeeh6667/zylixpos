@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { db } from '../db/index.ts';
+import { query, queryOne } from '../db/dbAdapter.ts';
 
 export async function getAuditLogs(req: Request, res: Response) {
   try {
@@ -54,25 +54,25 @@ export async function getAuditLogs(req: Request, res: Response) {
     }
 
     // Total Count Query
-    const countRow = db.prepare(`
+    const countRow = (await queryOne<any>(`
       SELECT COUNT(a.id) as total
       FROM audit_logs a
       LEFT JOIN users u ON a.user_id = u.id
       ${whereClause}
-    `).get(...params) as any || { total: 0 };
+    `, params)) || { total: 0 };
 
     const total = Number(countRow.total || 0);
     const totalPages = Math.ceil(total / limitNum);
 
     // Items Query
-    const items = db.prepare(`
+    const items = await query<any>(`
       SELECT a.id, a.business_id, a.user_id, a.action, a.entity as entity_type, a.entity_id, a.metadata, a.created_at, u.name as user_name, u.email as user_email
       FROM audit_logs a
       LEFT JOIN users u ON a.user_id = u.id
       ${whereClause}
       ORDER BY a.created_at DESC
       LIMIT ? OFFSET ?
-    `).all(...params, limitNum, offset);
+    `, [...params, limitNum, offset]);
 
     // Format metadata JSON if string
     const formattedItems = items.map((item: any) => {

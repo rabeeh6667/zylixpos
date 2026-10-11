@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { db } from '../db/index.ts';
+import { query, queryOne, execute, transaction } from '../db/dbAdapter.ts';
 import { cryptoUUID } from '../utils/crypto.ts';
 import { logAuditEvent } from '../utils/auditLogger.ts';
 import { z } from 'zod';
@@ -91,14 +91,14 @@ export async function checkoutSale(req: Request, res: Response) {
 
     // 1. Idempotency Check: Protect against duplicate request submissions
     if (effectiveIdempotencyKey && effectiveIdempotencyKey.trim()) {
-      const existingSale = db.prepare(`
+      const existingSale = await queryOne<any>(`
         SELECT * FROM sales
         WHERE business_id = ? AND idempotency_key = ?
-      `).get(businessId, effectiveIdempotencyKey.trim()) as any;
+      `, [businessId, effectiveIdempotencyKey.trim()]);
 
       if (existingSale) {
-        const lineItems = db.prepare('SELECT * FROM sale_items WHERE sale_id = ?').all(existingSale.id);
-        const paymentRecords = db.prepare('SELECT * FROM payments WHERE sale_id = ?').all(existingSale.id);
+        const lineItems = await query('SELECT * FROM sale_items WHERE sale_id = ?', [existingSale.id]);
+        const paymentRecords = await query('SELECT * FROM payments WHERE sale_id = ?', [existingSale.id]);
 
         return res.json({
           success: true,
@@ -117,7 +117,7 @@ export async function checkoutSale(req: Request, res: Response) {
     }
 
     // 2. Fetch Business Policy on Negative Inventory
-    const negSetting = db.prepare("SELECT value FROM settings WHERE business_id = ? AND key = 'allow_negative_inventory'").get(businessId) as any;
+    const negSetting = await queryOne<any>("SELECT value FROM settings WHERE business_id = ? AND key = 'allow_negative_inventory'", [businessId]);
     const allowNegativeInventory = negSetting?.value === 'true';
 
     // 2b. Validate Split Payment Breakdown Integrity
@@ -152,7 +152,7 @@ export async function checkoutSale(req: Request, res: Response) {
     }> = [];
 
     for (const item of items) {
-      const dbProd = db.prepare('SELECT name, selling_price FROM products WHERE id = ? AND business_id = ?').get(item.productId, businessId) as any;
+      const dbProd = await queryOne<any>('SELECT name, selling_price FROM products WHERE id = ? AND business_id = ?', [item.productId, businessId]);
       const productName = dbProd?.name || 'Product';
       const unitPrice = item.unitPrice !== undefined ? item.unitPrice : (dbProd?.selling_price || 0);
 
@@ -222,14 +222,14 @@ export async function checkoutSale(req: Request, res: Response) {
     let changeDue = Math.max(0, amountReceived - grandTotal);
 
     // 3. ATOMIC TRANSACTION EXECUTION
-    db.transaction(() => {
+    await transaction(async (tx) => {
       // Step A: Stock Validation for all items in cart
       for (const item of items) {
-        const product = db.prepare(`
+        const product = await tx.queryOne<any>(`
           SELECT id, name, current_stock, status
           FROM products
           WHERE id = ? AND business_id = ? AND status != 'ARCHIVED'
-        `).get(item.productId, businessId) as any;
+        `, [item.productId, businessId]);
 
         if (!product) {
           throw new Error(`Product ID '${item.productId}' not found or is archived in your store.`);
@@ -241,24 +241,24 @@ export async function checkoutSale(req: Request, res: Response) {
       }
 
       // Step B: Generate Sequential Invoice Number per business (e.g. INV-1001)
-      const lastInvRow = db.prepare(`
+      const lastInvRow = await tx.queryOne<any>(`
         SELECT MAX(CAST(SUBSTR(invoice_number, 5) AS INTEGER)) as maxNum
         FROM sales
         WHERE business_id = ? AND invoice_number LIKE 'INV-%'
-      `).get(businessId) as any;
+      `, [businessId]);
 
-      const nextNum = (lastInvRow && lastInvRow.maxNum ? Number(lastInvRow.maxNum) : 1000) + 1;
+      const nextNum = (lastInvRow && lastInvRow.maxnum ? Number(lastInvRow.maxnum) : (lastInvRow && lastInvRow.maxNum ? Number(lastInvRow.maxNum) : 1000)) + 1;
       invoiceNumber = `INV-${nextNum}`;
       createdSaleId = cryptoUUID();
 
       // Step C: Create Sales Record
-      db.prepare(`
+      await tx.execute(`
         INSERT INTO sales (
           id, business_id, user_id, customer_id, invoice_number,
           subtotal, discount, discount_percent, bill_discount_amount, product_discounts_total,
           tax, grand_total, payment_method, payment_status, status, idempotency_key, notes
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PAID', 'COMPLETED', ?, ?)
-      `).run(
+      `, [
         createdSaleId,
         businessId,
         userId || null,
@@ -274,17 +274,15 @@ export async function checkoutSale(req: Request, res: Response) {
         paymentMethod,
         effectiveIdempotencyKey ? effectiveIdempotencyKey.trim() : null,
         notes || null
-      );
+      ]);
 
       // Step D: Create Sale Line Items
-      const insertItemStmt = db.prepare(`
-        INSERT INTO sale_items (
-          id, business_id, sale_id, product_id, product_name, quantity, unit_price, discount, discount_percent, discount_amount, tax, subtotal
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-
       for (const item of processedItems) {
-        insertItemStmt.run(
+        await tx.execute(`
+          INSERT INTO sale_items (
+            id, business_id, sale_id, product_id, product_name, quantity, unit_price, discount, discount_percent, discount_amount, tax, subtotal
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
           cryptoUUID(),
           businessId,
           createdSaleId,
@@ -297,42 +295,39 @@ export async function checkoutSale(req: Request, res: Response) {
           item.discountAmount,
           item.taxAmount,
           item.lineSubtotal
-        );
+        ]);
       }
 
       // Step E: Create Payment Audit Records
-      const insertPaymentStmt = db.prepare(`
-        INSERT INTO payments (id, business_id, sale_id, payment_method, amount, status)
-        VALUES (?, ?, ?, ?, ?, 'COMPLETED')
-      `);
-
       if (paymentMethod === 'SPLIT' && payments && payments.length > 0) {
         for (const p of payments) {
-          insertPaymentStmt.run(cryptoUUID(), businessId, createdSaleId, p.paymentMethod, p.amount);
+          await tx.execute(`
+            INSERT INTO payments (id, business_id, sale_id, payment_method, amount, status)
+            VALUES (?, ?, ?, ?, ?, 'COMPLETED')
+          `, [cryptoUUID(), businessId, createdSaleId, p.paymentMethod, p.amount]);
         }
       } else {
-        insertPaymentStmt.run(cryptoUUID(), businessId, createdSaleId, paymentMethod, grandTotal);
+        await tx.execute(`
+          INSERT INTO payments (id, business_id, sale_id, payment_method, amount, status)
+          VALUES (?, ?, ?, ?, ?, 'COMPLETED')
+        `, [cryptoUUID(), businessId, createdSaleId, paymentMethod, grandTotal]);
       }
 
       // Step F: Deduct Inventory & Insert Inventory Transactions Audit Logs
-      const updateStockStmt = db.prepare(`
-        UPDATE products
-        SET current_stock = current_stock - ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND business_id = ?
-      `);
-
-      const insertTxStmt = db.prepare(`
-        INSERT INTO inventory_transactions (
-          id, business_id, product_id, transaction_type, quantity, reference_id, notes, user_id
-        ) VALUES (?, ?, ?, 'SALE', ?, ?, ?, ?)
-      `);
-
       for (const item of items) {
         // Deduct current stock
-        updateStockStmt.run(item.quantity, item.productId, businessId);
+        await tx.execute(`
+          UPDATE products
+          SET current_stock = current_stock - ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ? AND business_id = ?
+        `, [item.quantity, item.productId, businessId]);
 
         // Record SALE inventory transaction (negative delta for sale deduction)
-        insertTxStmt.run(
+        await tx.execute(`
+          INSERT INTO inventory_transactions (
+            id, business_id, product_id, transaction_type, quantity, reference_id, notes, user_id
+          ) VALUES (?, ?, ?, 'SALE', ?, ?, ?, ?)
+        `, [
           cryptoUUID(),
           businessId,
           item.productId,
@@ -340,19 +335,18 @@ export async function checkoutSale(req: Request, res: Response) {
           invoiceNumber,
           `POS Sale Invoice #${invoiceNumber}`,
           userId || null
-        );
+        ]);
       }
 
       // Step G: Update Customer Total Spent if customer assigned
       if (customerId) {
-        db.prepare(`
+        await tx.execute(`
           UPDATE customers
           SET total_spent = total_spent + ?
           WHERE id = ? AND business_id = ?
-        `).run(grandTotal, customerId, businessId);
+        `, [grandTotal, customerId, businessId]);
       }
-
-    })(); // End Atomic Database Transaction
+    }); // End Atomic Database Transaction
 
     logAuditEvent({
       businessId,
@@ -396,7 +390,7 @@ export async function checkoutSale(req: Request, res: Response) {
 
     // Check low stock / out of stock alerts
     for (const item of items) {
-      const prod = db.prepare('SELECT name, current_stock, min_stock FROM products WHERE id = ?').get(item.productId) as any;
+      const prod = await queryOne<any>('SELECT name, current_stock, min_stock FROM products WHERE id = ?', [item.productId]);
       if (prod) {
         if (prod.current_stock === 0) {
           createNotification({
@@ -463,10 +457,10 @@ export async function holdSale(req: Request, res: Response) {
     const { customerId, cartJson, note } = parseResult.data;
     const id = cryptoUUID();
 
-    db.prepare(`
+    await execute(`
       INSERT INTO held_sales (id, business_id, user_id, customer_id, cart_json, note)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, req.businessId, req.user?.userId || null, customerId || null, cartJson, note || 'Held POS Cart');
+    `, [id, req.businessId, req.user?.userId || null, customerId || null, cartJson, note || 'Held POS Cart']);
 
     logAuditEvent({
       businessId: req.businessId!,
@@ -490,14 +484,14 @@ export async function holdSale(req: Request, res: Response) {
 // Get Held Sales List
 export async function getHeldSales(req: Request, res: Response) {
   try {
-    const heldSales = db.prepare(`
+    const heldSales = await query(`
       SELECT h.*, c.name as customer_name, u.name as cashier_name
       FROM held_sales h
       LEFT JOIN customers c ON h.customer_id = c.id
       LEFT JOIN users u ON h.user_id = u.id
       WHERE h.business_id = ?
       ORDER BY h.created_at DESC
-    `).all(req.businessId);
+    `, [req.businessId]);
 
     return res.json({
       success: true,
@@ -512,14 +506,14 @@ export async function getHeldSales(req: Request, res: Response) {
 export async function deleteHeldSale(req: Request, res: Response) {
   try {
     const { id } = req.params;
-    db.prepare('DELETE FROM held_sales WHERE id = ? AND business_id = ?').run(id, req.businessId);
+    await execute('DELETE FROM held_sales WHERE id = ? AND business_id = ?', [id, req.businessId]);
 
     logAuditEvent({
       businessId: req.businessId!,
       userId: req.user?.userId,
       action: 'SALE_RESUMED',
       entity: 'held_sale',
-      entityId: id,
+      entityId: String(id),
       description: 'Held POS cart resumed or cleared',
     });
 
@@ -534,31 +528,31 @@ export async function getSaleReceipt(req: Request, res: Response) {
   try {
     const { id } = req.params;
 
-    const sale = db.prepare(`
+    const sale = await queryOne<any>(`
       SELECT s.*, c.name as customer_name, c.phone as customer_phone, c.email as customer_email, u.name as cashier_name
       FROM sales s
       LEFT JOIN customers c ON s.customer_id = c.id
       LEFT JOIN users u ON s.user_id = u.id
       WHERE s.id = ? AND s.business_id = ?
-    `).get(id, req.businessId) as any;
+    `, [id, req.businessId]);
 
     if (!sale) {
       return res.status(404).json({ success: false, message: 'Sale invoice record not found.' });
     }
 
-    const items = db.prepare(`
+    const items = await query(`
       SELECT si.*, p.sku, p.barcode
       FROM sale_items si
       LEFT JOIN products p ON si.product_id = p.id
       WHERE si.sale_id = ? AND si.business_id = ?
-    `).all(id, req.businessId);
+    `, [id, req.businessId]);
 
-    const payments = db.prepare(`
+    const payments = await query(`
       SELECT * FROM payments WHERE sale_id = ? AND business_id = ?
-    `).all(id, req.businessId);
+    `, [id, req.businessId]);
 
-    const business = db.prepare('SELECT * FROM businesses WHERE id = ?').get(req.businessId);
-    const settingsRows = db.prepare('SELECT key, value FROM settings WHERE business_id = ?').all(req.businessId) as { key: string; value: string }[];
+    const business = await queryOne('SELECT * FROM businesses WHERE id = ?', [req.businessId]);
+    const settingsRows = await query<{ key: string; value: string }>('SELECT key, value FROM settings WHERE business_id = ?', [req.businessId]);
 
     const settingsObj: Record<string, string> = {};
     settingsRows.forEach((r) => { settingsObj[r.key] = r.value; });

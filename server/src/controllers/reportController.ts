@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { db } from '../db/index.ts';
+import { query, queryOne } from '../db/dbAdapter.ts';
 
 // Helper to resolve date range boundaries based on preset filter
 function resolveDateRange(preset?: string, customStart?: string, customEnd?: string) {
@@ -57,7 +57,7 @@ export async function getSalesReport(req: Request, res: Response) {
     );
 
     // 1. Sales & Orders Aggregation
-    const salesAgg = db.prepare(`
+    const salesAgg = (await queryOne<any>(`
       SELECT
         COALESCE(SUM(grand_total), 0) as totalSales,
         COUNT(id) as totalOrders,
@@ -67,34 +67,34 @@ export async function getSalesReport(req: Request, res: Response) {
       FROM sales
       WHERE business_id = ? AND status != 'CANCELLED'
         AND date(created_at) >= date(?) AND date(created_at) <= date(?)
-    `).get(businessId, startStr, endStr) as any || {};
+    `, [businessId, startStr, endStr])) || {};
 
     // 2. Total Items Sold Units
-    const itemsSoldAgg = db.prepare(`
+    const itemsSoldAgg = (await queryOne<any>(`
       SELECT COALESCE(SUM(si.quantity), 0) as itemsSold
       FROM sale_items si
       JOIN sales s ON si.sale_id = s.id AND si.business_id = s.business_id
       WHERE si.business_id = ? AND s.status != 'CANCELLED'
         AND date(s.created_at) >= date(?) AND date(s.created_at) <= date(?)
-    `).get(businessId, startStr, endStr) as any || {};
+    `, [businessId, startStr, endStr])) || {};
 
     // 3. Expenses Aggregation
-    const expAgg = db.prepare(`
+    const expAgg = (await queryOne<any>(`
       SELECT COALESCE(SUM(amount), 0) as totalExpenses
       FROM expenses
       WHERE business_id = ? AND status != 'ARCHIVED'
         AND date(expense_date) >= date(?) AND date(expense_date) <= date(?)
-    `).get(businessId, startStr, endStr) as any || {};
+    `, [businessId, startStr, endStr])) || {};
 
     // 4. Cost of Goods Sold (COGS) Calculation from Products Purchase Price
-    const cogsAgg = db.prepare(`
+    const cogsAgg = (await queryOne<any>(`
       SELECT COALESCE(SUM(si.quantity * COALESCE(p.purchase_price, 0)), 0) as totalCogs
       FROM sale_items si
       JOIN sales s ON si.sale_id = s.id AND si.business_id = s.business_id
       LEFT JOIN products p ON si.product_id = p.id
       WHERE si.business_id = ? AND s.status != 'CANCELLED'
         AND date(s.created_at) >= date(?) AND date(s.created_at) <= date(?)
-    `).get(businessId, startStr, endStr) as any || {};
+    `, [businessId, startStr, endStr])) || {};
 
     const totalSales = Number(salesAgg.totalSales || 0);
     const totalOrders = Number(salesAgg.totalOrders || 0);
@@ -104,7 +104,7 @@ export async function getSalesReport(req: Request, res: Response) {
     const estimatedProfit = Math.max(0, totalSales - totalCogs - totalExpenses);
 
     // 5. Daily Breakdown Timeline for Charts
-    const dailyTimeline = db.prepare(`
+    const dailyTimeline = await query(`
       SELECT
         date(s.created_at) as sale_date,
         COALESCE(SUM(s.grand_total), 0) as daily_sales,
@@ -114,7 +114,7 @@ export async function getSalesReport(req: Request, res: Response) {
         AND date(s.created_at) >= date(?) AND date(s.created_at) <= date(?)
       GROUP BY date(s.created_at)
       ORDER BY date(s.created_at) ASC
-    `).all(businessId, startStr, endStr);
+    `, [businessId, startStr, endStr]);
 
     return res.json({
       success: true,
@@ -149,7 +149,7 @@ export async function getProductReport(req: Request, res: Response) {
     );
 
     // 1. Best Selling Products
-    const bestSellers = db.prepare(`
+    const bestSellers = await query(`
       SELECT
         p.id, p.name, p.sku, p.category_id, c.name as category_name,
         SUM(si.quantity) as total_units_sold,
@@ -160,25 +160,25 @@ export async function getProductReport(req: Request, res: Response) {
       LEFT JOIN categories c ON p.category_id = c.id
       WHERE si.business_id = ? AND s.status != 'CANCELLED'
         AND date(s.created_at) >= date(?) AND date(s.created_at) <= date(?)
-      GROUP BY p.id
+      GROUP BY p.id, p.name, p.sku, p.category_id, c.name
       ORDER BY total_revenue DESC, total_units_sold DESC
       LIMIT 10
-    `).all(businessId, startStr, endStr);
+    `, [businessId, startStr, endStr]);
 
     // 2. Slow Moving / Low Selling Products
-    const slowMovers = db.prepare(`
+    const slowMovers = await query(`
       SELECT p.id, p.name, p.current_stock, p.unit, COALESCE(SUM(si.quantity), 0) as units_sold
       FROM products p
       LEFT JOIN sale_items si ON p.id = si.product_id AND p.business_id = si.business_id
       LEFT JOIN sales s ON si.sale_id = s.id AND date(s.created_at) >= date(?) AND date(s.created_at) <= date(?)
       WHERE p.business_id = ? AND p.status = 'ACTIVE'
-      GROUP BY p.id
+      GROUP BY p.id, p.name, p.current_stock, p.unit
       ORDER BY units_sold ASC, p.current_stock DESC
       LIMIT 10
-    `).all(startStr, endStr, businessId);
+    `, [startStr, endStr, businessId]);
 
     // 3. Sales By Category Breakdown
-    const salesByCategory = db.prepare(`
+    const salesByCategory = await query(`
       SELECT
         COALESCE(c.name, 'Uncategorized') as category_name,
         SUM(si.quantity) as total_units,
@@ -189,12 +189,12 @@ export async function getProductReport(req: Request, res: Response) {
       LEFT JOIN categories c ON p.category_id = c.id
       WHERE si.business_id = ? AND s.status != 'CANCELLED'
         AND date(s.created_at) >= date(?) AND date(s.created_at) <= date(?)
-      GROUP BY c.id
+      GROUP BY c.id, c.name
       ORDER BY total_revenue DESC
-    `).all(businessId, startStr, endStr);
+    `, [businessId, startStr, endStr]);
 
     // 4. Current Stock Valuation Summary
-    const stockValuation = db.prepare(`
+    const stockValuation = (await queryOne<any>(`
       SELECT
         COUNT(id) as totalProducts,
         SUM(current_stock) as totalStockUnits,
@@ -204,7 +204,7 @@ export async function getProductReport(req: Request, res: Response) {
         SUM(CASE WHEN current_stock <= 0 THEN 1 ELSE 0 END) as outOfStockCount
       FROM products
       WHERE business_id = ? AND status = 'ACTIVE'
-    `).get(businessId) as any || {};
+    `, [businessId])) || {};
 
     return res.json({
       success: true,
@@ -229,7 +229,7 @@ export async function getPaymentReport(req: Request, res: Response) {
       customEnd ? String(customEnd) : undefined
     );
 
-    const paymentBreakdown = db.prepare(`
+    const paymentBreakdown = await query<any>(`
       SELECT
         payment_method,
         COUNT(id) as transaction_count,
@@ -239,7 +239,7 @@ export async function getPaymentReport(req: Request, res: Response) {
         AND date(created_at) >= date(?) AND date(created_at) <= date(?)
       GROUP BY payment_method
       ORDER BY total_amount DESC
-    `).all(businessId, startStr, endStr);
+    `, [businessId, startStr, endStr]);
 
     const totalRevenue = paymentBreakdown.reduce((sum: number, p: any) => sum + (Number(p.total_amount) || 0), 0);
 
@@ -268,38 +268,38 @@ export async function exportReportCsv(req: Request, res: Response) {
     let filename = `zylix_${type}_report_${startStr}_to_${endStr}.csv`;
 
     if (type === 'sales') {
-      const sales = db.prepare(`
+      const sales = await query<any>(`
         SELECT s.invoice_number, s.created_at, c.name as customer_name, s.payment_method, s.subtotal, s.discount, s.tax, s.grand_total, s.status
         FROM sales s
         LEFT JOIN customers c ON s.customer_id = c.id
         WHERE s.business_id = ? AND date(s.created_at) >= date(?) AND date(s.created_at) <= date(?)
         ORDER BY s.created_at DESC
-      `).all(businessId, startStr, endStr);
+      `, [businessId, startStr, endStr]);
 
       csvContent = 'Invoice Number,Date,Customer,Payment Method,Subtotal,Discount,Tax,Grand Total,Status\n';
       sales.forEach((s: any) => {
         csvContent += `"${s.invoice_number}","${s.created_at}","${s.customer_name || 'Walk-in Guest'}","${s.payment_method}",${s.subtotal},${s.discount},${s.tax},${s.grand_total},"${s.status}"\n`;
       });
     } else if (type === 'expenses') {
-      const expenses = db.prepare(`
+      const expenses = await query<any>(`
         SELECT title, category, amount, payment_method, expense_date, description
         FROM expenses
         WHERE business_id = ? AND date(expense_date) >= date(?) AND date(expense_date) <= date(?)
         ORDER BY expense_date DESC
-      `).all(businessId, startStr, endStr);
+      `, [businessId, startStr, endStr]);
 
       csvContent = 'Title,Category,Amount,Payment Method,Date,Description\n';
       expenses.forEach((e: any) => {
         csvContent += `"${e.title}","${e.category}",${e.amount},"${e.payment_method}","${e.expense_date}","${e.description || ''}"\n`;
       });
     } else if (type === 'products') {
-      const products = db.prepare(`
+      const products = await query<any>(`
         SELECT p.name, p.sku, p.barcode, c.name as category, p.selling_price, p.purchase_price, p.current_stock, p.unit, p.status
         FROM products p
         LEFT JOIN categories c ON p.category_id = c.id
         WHERE p.business_id = ?
         ORDER BY p.name ASC
-      `).all(businessId);
+      `, [businessId]);
 
       csvContent = 'Product Name,SKU,Barcode,Category,Selling Price,Purchase Price,Stock,Unit,Status\n';
       products.forEach((p: any) => {

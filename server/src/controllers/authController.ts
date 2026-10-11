@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { db } from '../db/index.ts';
+import { queryOne, transaction } from '../db/dbAdapter.ts';
 import { hashPassword, comparePassword } from '../utils/password.ts';
 import { generateToken } from '../utils/jwt.ts';
 import { cryptoUUID } from '../utils/crypto.ts';
@@ -36,7 +36,7 @@ export async function register(req: Request, res: Response) {
     const { businessName, businessType, ownerName, email, password, phone, city, address } = parseResult.data;
 
     // Check if email already registered
-    const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email.toLowerCase());
+    const existingUser = await queryOne('SELECT id FROM users WHERE email = ?', [email.toLowerCase()]);
     if (existingUser) {
       return res.status(409).json({
         success: false,
@@ -48,34 +48,27 @@ export async function register(req: Request, res: Response) {
     const userId = cryptoUUID();
     const passwordHash = await hashPassword(password);
 
-    // Run transaction
-    const insertBusiness = db.prepare(`
-      INSERT INTO businesses (id, name, business_type, phone, email, address, city, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING')
-    `);
+    await transaction(async (tx) => {
+      await tx.execute(
+        `INSERT INTO businesses (id, name, business_type, phone, email, address, city, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING')`,
+        [businessId, businessName, businessType, phone, email.toLowerCase(), address || null, city]
+      );
 
-    const insertUser = db.prepare(`
-      INSERT INTO users (id, business_id, name, email, password_hash, role, status)
-      VALUES (?, ?, ?, ?, ?, 'OWNER', 'PENDING')
-    `);
+      await tx.execute(
+        `INSERT INTO users (id, business_id, name, email, password_hash, role, status)
+         VALUES (?, ?, ?, ?, ?, 'OWNER', 'PENDING')`,
+        [userId, businessId, ownerName, email.toLowerCase(), passwordHash]
+      );
 
-    const insertSetting = db.prepare(`
-      INSERT INTO settings (id, business_id, key, value)
-      VALUES (?, ?, ?, ?)
-    `);
-
-    db.transaction(() => {
-      insertBusiness.run(businessId, businessName, businessType, phone, email.toLowerCase(), address || null, city);
-      insertUser.run(userId, businessId, ownerName, email.toLowerCase(), passwordHash);
-      
       // Default business settings
-      insertSetting.run(cryptoUUID(), businessId, 'currency', 'USD');
-      insertSetting.run(cryptoUUID(), businessId, 'currency_symbol', '$');
-      insertSetting.run(cryptoUUID(), businessId, 'tax_rate', '8.5');
-      insertSetting.run(cryptoUUID(), businessId, 'receipt_header', `${businessName} - Powering Better Business.`);
-      insertSetting.run(cryptoUUID(), businessId, 'low_stock_threshold', '5');
-      insertSetting.run(cryptoUUID(), businessId, 'allow_negative_inventory', 'false');
-    })();
+      await tx.execute(`INSERT INTO settings (id, business_id, key, value) VALUES (?, ?, ?, ?)`, [cryptoUUID(), businessId, 'currency', 'USD']);
+      await tx.execute(`INSERT INTO settings (id, business_id, key, value) VALUES (?, ?, ?, ?)`, [cryptoUUID(), businessId, 'currency_symbol', '$']);
+      await tx.execute(`INSERT INTO settings (id, business_id, key, value) VALUES (?, ?, ?, ?)`, [cryptoUUID(), businessId, 'tax_rate', '8.5']);
+      await tx.execute(`INSERT INTO settings (id, business_id, key, value) VALUES (?, ?, ?, ?)`, [cryptoUUID(), businessId, 'receipt_header', `${businessName} - Powering Better Business.`]);
+      await tx.execute(`INSERT INTO settings (id, business_id, key, value) VALUES (?, ?, ?, ?)`, [cryptoUUID(), businessId, 'low_stock_threshold', '5']);
+      await tx.execute(`INSERT INTO settings (id, business_id, key, value) VALUES (?, ?, ?, ?)`, [cryptoUUID(), businessId, 'allow_negative_inventory', 'false']);
+    });
 
     logAuditEvent({
       businessId,
@@ -113,13 +106,16 @@ export async function login(req: Request, res: Response) {
 
     const { email, password } = parseResult.data;
 
-    const user = db.prepare(`
+    const user = await queryOne<any>(
+      `
       SELECT u.id, u.business_id, u.name, u.email, u.password_hash, u.role, u.status, u.is_platform_owner,
              b.name as business_name, b.business_type, b.logo, b.status as business_status
       FROM users u
       JOIN businesses b ON u.business_id = b.id
       WHERE u.email = ?
-    `).get(email.toLowerCase()) as any;
+    `,
+      [email.toLowerCase()]
+    );
 
     if (!user) {
       return res.status(401).json({
@@ -234,13 +230,16 @@ export async function getCurrentUser(req: Request, res: Response) {
       return res.status(401).json({ success: false, message: 'Unauthenticated' });
     }
 
-    const user = db.prepare(`
+    const user = await queryOne<any>(
+      `
       SELECT u.id, u.business_id, u.name, u.email, u.role, u.status, u.is_platform_owner, u.created_at,
              b.name as business_name, b.business_type, b.phone, b.email as business_email, b.address, b.logo, b.status as business_status
       FROM users u
       JOIN businesses b ON u.business_id = b.id
       WHERE u.id = ? AND u.business_id = ?
-    `).get(req.user.userId, req.businessId) as any;
+    `,
+      [req.user.userId, req.businessId]
+    );
 
     if (!user) {
       return res.status(404).json({ success: false, message: 'User or Business record not found.' });

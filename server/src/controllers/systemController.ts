@@ -49,7 +49,7 @@ export async function handleDeleteBackup(req: Request, res: Response) {
     const businessId = req.businessId!;
     const userId = req.user?.userId;
 
-    deleteBackup(id, businessId, userId);
+    deleteBackup(String(id), businessId, userId);
 
     return res.json({
       success: true,

@@ -274,6 +274,22 @@ export function initDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
     );
+
+    -- Suppliers & Vendors
+    CREATE TABLE IF NOT EXISTS suppliers (
+      id TEXT PRIMARY KEY,
+      business_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      contact_person TEXT,
+      phone TEXT,
+      email TEXT,
+      category TEXT,
+      address TEXT,
+      status TEXT DEFAULT 'ACTIVE',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
+    );
   `;
 
   db.exec(schema);
@@ -373,6 +389,7 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(business_id, user_id);
     CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(business_id, is_read);
     CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(business_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_suppliers_business ON suppliers(business_id);
   `;
   db.exec(indexSchema);
 

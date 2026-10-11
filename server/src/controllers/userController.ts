@@ -1,11 +1,10 @@
 import { Request, Response } from 'express';
-import { db } from '../db/index.ts';
+import { query, queryOne, execute } from '../db/dbAdapter.ts';
 import { hashPassword } from '../utils/password.ts';
 import { cryptoUUID } from '../utils/crypto.ts';
 import { logAuditEvent } from '../utils/auditLogger.ts';
-import { z } from 'zod';
-
 import { createNotification } from '../utils/notificationLogger.ts';
+import { z } from 'zod';
 
 const createUserSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -23,12 +22,15 @@ const updateUserSchema = z.object({
 
 export async function getUsers(req: Request, res: Response) {
   try {
-    const users = db.prepare(`
+    const users = await query(
+      `
       SELECT id, name, email, role, status, created_at, updated_at
       FROM users
       WHERE business_id = ?
       ORDER BY created_at DESC
-    `).all(req.businessId);
+    `,
+      [req.businessId]
+    );
 
     return res.json({
       success: true,
@@ -61,7 +63,7 @@ export async function createUser(req: Request, res: Response) {
     }
 
     // Check if email exists
-    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email.toLowerCase());
+    const existing = await queryOne('SELECT id FROM users WHERE email = ?', [email.toLowerCase()]);
     if (existing) {
       return res.status(409).json({
         success: false,
@@ -72,10 +74,13 @@ export async function createUser(req: Request, res: Response) {
     const id = cryptoUUID();
     const passwordHash = await hashPassword(password);
 
-    db.prepare(`
+    await execute(
+      `
       INSERT INTO users (id, business_id, name, email, password_hash, role, status)
       VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE')
-    `).run(id, req.businessId, name, email.toLowerCase(), passwordHash, role);
+    `,
+      [id, req.businessId, name, email.toLowerCase(), passwordHash, role]
+    );
 
     logAuditEvent({
       businessId: req.businessId!,
@@ -119,7 +124,7 @@ export async function updateUser(req: Request, res: Response) {
     }
 
     // Ensure target user belongs to current tenant
-    const targetUser = db.prepare('SELECT * FROM users WHERE id = ? AND business_id = ?').get(id, req.businessId) as any;
+    const targetUser = await queryOne<any>('SELECT * FROM users WHERE id = ? AND business_id = ?', [id, req.businessId]);
     if (!targetUser) {
       return res.status(404).json({ success: false, message: 'User not found in your business.' });
     }
@@ -156,7 +161,7 @@ export async function updateUser(req: Request, res: Response) {
     updates.push('updated_at = CURRENT_TIMESTAMP');
     params.push(id, req.businessId);
 
-    db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ? AND business_id = ?`).run(...params);
+    await execute(`UPDATE users SET ${updates.join(', ')} WHERE id = ? AND business_id = ?`, params);
 
     if (data.role) {
       logAuditEvent({
@@ -164,7 +169,7 @@ export async function updateUser(req: Request, res: Response) {
         userId: req.user?.userId,
         action: 'ROLE_CHANGED',
         entity: 'user',
-        entityId: id,
+        entityId: String(id),
         description: `User role changed to ${data.role}`,
         metadata: { targetUserEmail: targetUser.email, newRole: data.role },
       });
@@ -176,7 +181,7 @@ export async function updateUser(req: Request, res: Response) {
         userId: req.user?.userId,
         action: 'PASSWORD_CHANGE',
         entity: 'user',
-        entityId: id,
+        entityId: String(id),
         description: `Password changed for user ${targetUser.email}`,
       });
     }
@@ -187,7 +192,7 @@ export async function updateUser(req: Request, res: Response) {
         userId: req.user?.userId,
         action: 'USER_ARCHIVED',
         entity: 'user',
-        entityId: id,
+        entityId: String(id),
         description: `User ${targetUser.email} archived`,
       });
     }
@@ -197,7 +202,7 @@ export async function updateUser(req: Request, res: Response) {
       userId: req.user?.userId,
       action: 'USER_UPDATED',
       entity: 'user',
-      entityId: id,
+      entityId: String(id),
       description: `User ${targetUser.name} updated`,
       metadata: { targetUserEmail: targetUser.email, updates: parseResult.data },
     });
@@ -216,18 +221,18 @@ export async function deleteUser(req: Request, res: Response) {
       return res.status(400).json({ success: false, message: 'You cannot delete your own account.' });
     }
 
-    const targetUser = db.prepare('SELECT * FROM users WHERE id = ? AND business_id = ?').get(id, req.businessId) as any;
+    const targetUser = await queryOne<any>('SELECT * FROM users WHERE id = ? AND business_id = ?', [id, req.businessId]);
     if (!targetUser) {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
 
     let deleted = false;
     try {
-      db.prepare('DELETE FROM users WHERE id = ? AND business_id = ?').run(id, req.businessId);
+      await execute('DELETE FROM users WHERE id = ? AND business_id = ?', [id, req.businessId]);
       deleted = true;
     } catch (dbErr) {
       // Fallback to soft deletion/deactivation if user is referenced in sales or audit logs
-      db.prepare(`UPDATE users SET status = 'INACTIVE', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND business_id = ?`).run(id, req.businessId);
+      await execute(`UPDATE users SET status = 'INACTIVE', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND business_id = ?`, [id, req.businessId]);
     }
 
     logAuditEvent({
@@ -235,7 +240,7 @@ export async function deleteUser(req: Request, res: Response) {
       userId: req.user?.userId,
       action: deleted ? 'USER_DELETED' : 'USER_ARCHIVED',
       entity: 'user',
-      entityId: id,
+      entityId: String(id),
       description: `User ${targetUser.name} (${targetUser.email}) ${deleted ? 'deleted' : 'deactivated'}`,
       metadata: { targetEmail: targetUser.email, hardDeleted: deleted },
     });

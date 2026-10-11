@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { db } from '../db/index.ts';
+import { query, queryOne, execute, transaction } from '../db/dbAdapter.ts';
 import { cryptoUUID } from '../utils/crypto.ts';
 import { logAuditEvent } from '../utils/auditLogger.ts';
 import { z } from 'zod';
@@ -44,16 +44,16 @@ export async function getInventoryTransactions(req: Request, res: Response) {
       params.push(type);
     }
 
-    const countRow = db.prepare(`SELECT COUNT(*) as total ${baseQuery}`).get(...params) as any || { total: 0 };
+    const countRow = (await queryOne<any>(`SELECT COUNT(*) as total ${baseQuery}`, params)) || { total: 0 };
     const total = Number(countRow.total || 0);
     const totalPages = Math.ceil(total / limitNum);
 
-    const items = db.prepare(`
+    const items = await query(`
       SELECT it.*, p.name as product_name, p.sku, p.barcode, p.unit, u.name as user_name
       ${baseQuery}
       ORDER BY it.created_at DESC
       LIMIT ? OFFSET ?
-    `).all(...params, limitNum, offset);
+    `, [...params, limitNum, offset]);
 
     return res.json({
       success: true,
@@ -83,7 +83,7 @@ export async function stockIn(req: Request, res: Response) {
     const { productId, quantity, referenceId, notes } = parseResult.data;
 
     // Verify product belongs to tenant
-    const product = db.prepare('SELECT * FROM products WHERE id = ? AND business_id = ?').get(productId, req.businessId) as any;
+    const product = await queryOne<any>('SELECT * FROM products WHERE id = ? AND business_id = ?', [productId, req.businessId]);
     if (!product) {
       return res.status(404).json({ success: false, message: 'Product not found in your business.' });
     }
@@ -91,16 +91,16 @@ export async function stockIn(req: Request, res: Response) {
     const txId = cryptoUUID();
     const newStock = Number(product.current_stock) + quantity;
 
-    db.transaction(() => {
+    await transaction(async (tx) => {
       // 1. Update product current stock
-      db.prepare(`UPDATE products SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND business_id = ?`).run(newStock, productId, req.businessId);
+      await tx.execute(`UPDATE products SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND business_id = ?`, [newStock, productId, req.businessId]);
 
       // 2. Insert inventory transaction record
-      db.prepare(`
+      await tx.execute(`
         INSERT INTO inventory_transactions (id, business_id, product_id, transaction_type, quantity, reference_id, notes, user_id)
         VALUES (?, ?, ?, 'STOCK_IN', ?, ?, ?, ?)
-      `).run(txId, req.businessId, productId, quantity, referenceId || null, notes || 'Stock received', req.user?.userId || null);
-    })();
+      `, [txId, req.businessId, productId, quantity, referenceId || null, notes || 'Stock received', req.user?.userId || null]);
+    });
 
     logAuditEvent({
       businessId: req.businessId!,
@@ -135,7 +135,7 @@ export async function stockOut(req: Request, res: Response) {
 
     const { productId, quantity, referenceId, notes } = parseResult.data;
 
-    const product = db.prepare('SELECT * FROM products WHERE id = ? AND business_id = ?').get(productId, req.businessId) as any;
+    const product = await queryOne<any>('SELECT * FROM products WHERE id = ? AND business_id = ?', [productId, req.businessId]);
     if (!product) {
       return res.status(404).json({ success: false, message: 'Product not found in your business.' });
     }
@@ -143,7 +143,7 @@ export async function stockOut(req: Request, res: Response) {
     const newStock = Number(product.current_stock) - quantity;
 
     // Check negative inventory policy
-    const negSetting = db.prepare("SELECT value FROM settings WHERE business_id = ? AND key = 'allow_negative_inventory'").get(req.businessId) as any;
+    const negSetting = await queryOne<any>("SELECT value FROM settings WHERE business_id = ? AND key = 'allow_negative_inventory'", [req.businessId]);
     const allowNegative = negSetting?.value === 'true';
 
     if (newStock < 0 && !allowNegative) {
@@ -155,14 +155,14 @@ export async function stockOut(req: Request, res: Response) {
 
     const txId = cryptoUUID();
 
-    db.transaction(() => {
-      db.prepare(`UPDATE products SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND business_id = ?`).run(newStock, productId, req.businessId);
+    await transaction(async (tx) => {
+      await tx.execute(`UPDATE products SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND business_id = ?`, [newStock, productId, req.businessId]);
 
-      db.prepare(`
+      await tx.execute(`
         INSERT INTO inventory_transactions (id, business_id, product_id, transaction_type, quantity, reference_id, notes, user_id)
         VALUES (?, ?, ?, 'STOCK_OUT', ?, ?, ?, ?)
-      `).run(txId, req.businessId, productId, -quantity, referenceId || null, notes || 'Stock removed/damaged', req.user?.userId || null);
-    })();
+      `, [txId, req.businessId, productId, -quantity, referenceId || null, notes || 'Stock removed/damaged', req.user?.userId || null]);
+    });
 
     logAuditEvent({
       businessId: req.businessId!,
@@ -197,7 +197,7 @@ export async function adjustStock(req: Request, res: Response) {
 
     const { productId, newStock, notes } = parseResult.data;
 
-    const product = db.prepare('SELECT * FROM products WHERE id = ? AND business_id = ?').get(productId, req.businessId) as any;
+    const product = await queryOne<any>('SELECT * FROM products WHERE id = ? AND business_id = ?', [productId, req.businessId]);
     if (!product) {
       return res.status(404).json({ success: false, message: 'Product not found in your business.' });
     }
@@ -211,14 +211,14 @@ export async function adjustStock(req: Request, res: Response) {
 
     const txId = cryptoUUID();
 
-    db.transaction(() => {
-      db.prepare(`UPDATE products SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND business_id = ?`).run(newStock, productId, req.businessId);
+    await transaction(async (tx) => {
+      await tx.execute(`UPDATE products SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND business_id = ?`, [newStock, productId, req.businessId]);
 
-      db.prepare(`
+      await tx.execute(`
         INSERT INTO inventory_transactions (id, business_id, product_id, transaction_type, quantity, notes, user_id)
         VALUES (?, ?, ?, 'ADJUSTMENT', ?, ?, ?)
-      `).run(txId, req.businessId, productId, delta, notes, req.user?.userId || null);
-    })();
+      `, [txId, req.businessId, productId, delta, notes, req.user?.userId || null]);
+    });
 
     logAuditEvent({
       businessId: req.businessId!,
@@ -243,13 +243,13 @@ export async function adjustStock(req: Request, res: Response) {
 
 export async function getLowStockItems(req: Request, res: Response) {
   try {
-    const lowStockItems = db.prepare(`
+    const lowStockItems = await query(`
       SELECT p.*, c.name as category_name
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id
       WHERE p.business_id = ? AND p.status = 'ACTIVE' AND p.current_stock <= p.min_stock
       ORDER BY p.current_stock ASC
-    `).all(req.businessId);
+    `, [req.businessId]);
 
     return res.json({
       success: true,
