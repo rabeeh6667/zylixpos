@@ -53,7 +53,7 @@ export const SuppliersPage: React.FC = () => {
 
   // Delete Modal state
   const [supplierToDelete, setSupplierToDelete] = useState<SupplierItem | null>(null);
-  const [deleting, setDeleting] = useState(false);  
+  const [deleting, setDeleting] = useState(false);
   const fetchSuppliers = async () => {
     try {
       setLoading(true);
