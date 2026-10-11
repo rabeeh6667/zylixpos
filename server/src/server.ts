@@ -1,3 +1,4 @@
+
 import express from 'express';
 import cors from 'cors';
 import { config } from './config/index.ts';
@@ -15,6 +16,7 @@ import productRoutes from './routes/products.ts';
 import categoryRoutes from './routes/categories.ts';
 import inventoryRoutes from './routes/inventory.ts';
 import customerRoutes from './routes/customers.ts';
+import supplierRoutes from './routes/suppliers.ts';
 import salesRoutes from './routes/sales.ts';
 import posRoutes from './routes/pos.ts';
 import expenseRoutes from './routes/expenses.ts';
@@ -36,15 +38,20 @@ const defaultOrigins = [
 
 const envOrigins = (process.env.CORS_ORIGINS || '')
   .split(',')
-  .map((o) => o.trim())
+  .map((origin) => origin.trim())
   .filter(Boolean);
 
-const allowedOrigins = Array.from(new Set([...defaultOrigins, ...envOrigins]));
+const allowedOrigins = Array.from(
+  new Set([...defaultOrigins, ...envOrigins])
+);
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
+      if (!origin) {
+        return callback(null, true);
+      }
+
       if (
         allowedOrigins.includes(origin) ||
         origin.endsWith('.zylixpos.com') ||
@@ -52,23 +59,27 @@ app.use(
       ) {
         return callback(null, true);
       }
-      callback(null, false);
+
+      return callback(null, false);
     },
     credentials: true,
   })
 );
+
 app.use(express.json());
 
-// Initialize Database & Tables
+// Initialize database and tables
 initDatabase();
 
 // Demo only: create sample accounts when SEED_DEMO_DATA=true
 if (process.env.SEED_DEMO_DATA === 'true') {
-  seedDatabase().catch((err) => console.error('[Seed Error]', err));
+  seedDatabase().catch((error) => {
+    console.error('[Seed Error]', error);
+  });
 }
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (_req, res) => {
   res.json({
     status: 'online',
     product: 'ZYLIX POS',
@@ -77,7 +88,7 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// API Routes
+// API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/business', businessRoutes);
@@ -88,24 +99,27 @@ app.use('/api/audit-logs', auditRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/system', systemRoutes);
 app.use('/api/tenants', tenantRoutes);
+
 app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/customers', customerRoutes);
+app.use('/api/suppliers', supplierRoutes);
 app.use('/api/sales', salesRoutes);
 app.use('/api/pos', posRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/reports', reportRoutes);
 
-// Global Error Handler
+// Global error handler
 app.use(errorHandler);
 
 const PORT = config.port;
+
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`====================================================`);
+  console.log('====================================================');
   console.log(`  🚀 ZYLIX POS Server running on http://localhost:${PORT}`);
   console.log(`  Environment: ${config.nodeEnv}`);
-  console.log(`====================================================`);
+  console.log('====================================================');
 });
 
 export default app;

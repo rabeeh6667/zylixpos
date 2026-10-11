@@ -129,6 +129,23 @@ export function initDatabase() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
     );
 
+        -- Suppliers
+    CREATE TABLE IF NOT EXISTS suppliers (
+      id TEXT PRIMARY KEY,
+      business_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      contact_person TEXT,
+      phone TEXT,
+      email TEXT,
+      category TEXT DEFAULT 'General Goods',
+      address TEXT,
+      status TEXT NOT NULL DEFAULT 'ACTIVE'
+        CHECK(status IN ('ACTIVE', 'INACTIVE')),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
+    );
+
     -- Customers
     CREATE TABLE IF NOT EXISTS customers (
       id TEXT PRIMARY KEY,
@@ -363,6 +380,7 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_payments_business ON payments(business_id);
     CREATE INDEX IF NOT EXISTS idx_held_sales_business ON held_sales(business_id);
     CREATE INDEX IF NOT EXISTS idx_customers_business ON customers(business_id);
+    CREATE INDEX IF NOT EXISTS idx_suppliers_business ON suppliers(business_id);
     CREATE INDEX IF NOT EXISTS idx_customers_status ON customers(business_id, status);
     CREATE INDEX IF NOT EXISTS idx_expenses_business ON expenses(business_id);
     CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(business_id, expense_date);

@@ -21,7 +21,7 @@ import { ProfilePage } from './pages/ProfilePage.tsx';
 import { ActivityPage } from './pages/ActivityPage.tsx';
 import { TenantsPage } from './pages/TenantsPage.tsx';
 
-import { SuppliersPage } from './pages/SectionPlaceholders.tsx';
+import { SuppliersPage } from './pages/SuppliersPage.tsx';
 
 export const App: React.FC = () => {
   return (
@@ -30,38 +30,38 @@ export const App: React.FC = () => {
         <NetworkProvider>
           <AuthProvider>
             <Routes>
-            {/* Public Auth Routes */}
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
+              {/* Public Auth Routes */}
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
 
-            {/* Protected App Routes */}
-            <Route element={<AppLayout />}>
-              <Route path="/dashboard" element={<DashboardPage />} />
-              <Route path="/pos" element={<PosPage />} />
-              <Route path="/products" element={<ProductsPage />} />
-              <Route path="/inventory" element={<InventoryPage />} />
-              <Route path="/customers" element={<CustomersPage />} />
-              <Route path="/suppliers" element={<SuppliersPage />} />
-              <Route path="/sales" element={<SalesPage />} />
-              <Route path="/expenses" element={<ExpensesPage />} />
-              <Route path="/reports" element={<ReportsPage />} />
-              <Route path="/users" element={<UsersPage />} />
-              <Route path="/platform/tenants" element={<TenantsPage />} />
-              <Route path="/platform/tenants/:businessId" element={<TenantsPage />} />
-              <Route path="/tenants" element={<Navigate to="/platform/tenants" replace />} />
-              <Route path="/activity" element={<ActivityPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
-            </Route>
+              {/* Protected App Routes */}
+              <Route element={<AppLayout />}>
+                <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/pos" element={<PosPage />} />
+                <Route path="/products" element={<ProductsPage />} />
+                <Route path="/inventory" element={<InventoryPage />} />
+                <Route path="/customers" element={<CustomersPage />} />
+                <Route path="/suppliers" element={<SuppliersPage />} />
+                <Route path="/sales" element={<SalesPage />} />
+                <Route path="/expenses" element={<ExpensesPage />} />
+                <Route path="/reports" element={<ReportsPage />} />
+                <Route path="/users" element={<UsersPage />} />
+                <Route path="/platform/tenants" element={<TenantsPage />} />
+                <Route path="/platform/tenants/:businessId" element={<TenantsPage />} />
+                <Route path="/tenants" element={<Navigate to="/platform/tenants" replace />} />
+                <Route path="/activity" element={<ActivityPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/profile" element={<ProfilePage />} />
+              </Route>
 
-            {/* Default Fallback */}
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
-        </AuthProvider>
-      </NetworkProvider>
-    </ToastProvider>
-  </BrowserRouter>
-);
+              {/* Default Fallback */}
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+          </AuthProvider>
+        </NetworkProvider>
+      </ToastProvider>
+    </BrowserRouter>
+  );
 };
 
 export default App;
