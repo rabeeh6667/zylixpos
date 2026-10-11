@@ -1,7 +1,6 @@
-
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { db } from '../db/index.ts';
+import { query, queryOne, execute } from '../db/dbAdapter.ts';
 import { cryptoUUID } from '../utils/crypto.ts';
 import { logAuditEvent } from '../utils/auditLogger.ts';
 
@@ -15,19 +14,59 @@ const supplierSchema = z.object({
   status: z.enum(['ACTIVE', 'INACTIVE']).optional().default('ACTIVE'),
 });
 
-function getSupplier(id: string, businessId: string) {
-  return db.prepare(
-    'SELECT * FROM suppliers WHERE id = ? AND business_id = ?'
-  ).get(id, businessId) as any;
+const updateSupplierSchema = z.object({
+  name: z.string().trim().min(2, 'Supplier name is required').optional(),
+  contactPerson: z.string().trim().optional(),
+  phone: z.string().trim().optional(),
+  email: z.string().trim().email('Invalid email').or(z.literal('')).optional(),
+  category: z.string().trim().optional(),
+  address: z.string().trim().optional(),
+  status: z.enum(['ACTIVE', 'INACTIVE']).optional(),
+});
+
+async function getSupplier(id: string, businessId: string) {
+  return queryOne(
+    'SELECT * FROM suppliers WHERE id = ? AND business_id = ?',
+    [id, businessId]
+  );
 }
 
 export async function getSuppliers(req: Request, res: Response) {
   try {
-    const suppliers = db.prepare(`
+    const businessId = req.businessId;
+    if (!businessId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Business context missing or invalid session.',
+        code: 'UNAUTHORIZED',
+      });
+    }
+
+    const { search, category, status } = req.query;
+    let whereClause = 'WHERE business_id = ?';
+    const params: any[] = [businessId];
+
+    if (status && (status === 'ACTIVE' || status === 'INACTIVE')) {
+      whereClause += ' AND status = ?';
+      params.push(status);
+    }
+
+    if (category && typeof category === 'string' && category.trim()) {
+      whereClause += ' AND category = ?';
+      params.push(category.trim());
+    }
+
+    if (search && typeof search === 'string' && search.trim()) {
+      const term = `%${search.trim()}%`;
+      whereClause += ' AND (name LIKE ? OR contact_person LIKE ? OR phone LIKE ? OR email LIKE ? OR category LIKE ?)';
+      params.push(term, term, term, term, term);
+    }
+
+    const suppliers = await query(`
       SELECT * FROM suppliers
-      WHERE business_id = ?
+      ${whereClause}
       ORDER BY created_at DESC
-    `).all(req.businessId);
+    `, params);
 
     return res.json({
       success: true,
@@ -44,10 +83,50 @@ export async function getSuppliers(req: Request, res: Response) {
   }
 }
 
+export async function getSupplierById(req: Request, res: Response) {
+  try {
+    const businessId = req.businessId;
+    if (!businessId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Business context missing or invalid session.',
+        code: 'UNAUTHORIZED',
+      });
+    }
+
+    const supplier = await getSupplier(String(req.params.id), businessId);
+    if (!supplier) {
+      return res.status(404).json({
+        success: false,
+        message: 'Supplier not found',
+      });
+    }
+
+    return res.json({
+      success: true,
+      supplier,
+    });
+  } catch (error) {
+    console.error('[Suppliers] GetById failed:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve supplier',
+    });
+  }
+}
+
 export async function createSupplier(req: Request, res: Response) {
   try {
-    const parsed = supplierSchema.safeParse(req.body);
+    const businessId = req.businessId;
+    if (!businessId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Business context missing or invalid session.',
+        code: 'UNAUTHORIZED',
+      });
+    }
 
+    const parsed = supplierSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({
         success: false,
@@ -58,35 +137,38 @@ export async function createSupplier(req: Request, res: Response) {
     const data = parsed.data;
     const id = cryptoUUID();
 
-    db.prepare(`
+    await execute(`
       INSERT INTO suppliers (
         id, business_id, name, contact_person, phone,
         email, category, address, status
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    `, [
       id,
-      req.businessId,
+      businessId,
       data.name,
-      data.contactPerson,
-      data.phone,
-      data.email,
-      data.category,
-      data.address,
-      data.status
-    );
+      data.contactPerson || null,
+      data.phone || null,
+      data.email || null,
+      data.category || 'General Goods',
+      data.address || null,
+      data.status || 'ACTIVE',
+    ]);
 
-    logAuditEvent({
-      businessId: req.businessId,
+    await logAuditEvent({
+      businessId,
+      userId: req.user?.userId || null,
       action: 'CREATE',
       entity: 'supplier',
       entityId: id,
       description: `Created supplier: ${data.name}`,
     });
 
+    const supplier = await getSupplier(id, businessId);
+
     return res.status(201).json({
       success: true,
       message: 'Supplier added successfully',
-      supplier: getSupplier(id, req.businessId),
+      supplier,
     });
   } catch (error) {
     console.error('[Suppliers] Create failed:', error);
@@ -99,7 +181,17 @@ export async function createSupplier(req: Request, res: Response) {
 
 export async function updateSupplier(req: Request, res: Response) {
   try {
-    const existing = getSupplier(String(req.params.id), req.businessId);
+    const businessId = req.businessId;
+    if (!businessId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Business context missing or invalid session.',
+        code: 'UNAUTHORIZED',
+      });
+    }
+
+    const supplierId = String(req.params.id);
+    const existing = await getSupplier(supplierId, businessId);
 
     if (!existing) {
       return res.status(404).json({
@@ -108,14 +200,11 @@ export async function updateSupplier(req: Request, res: Response) {
       });
     }
 
-    const parsed = supplierSchema.partial().safeParse(req.body);
-
-    if (!parsed.success || Object.keys(parsed.data || {}).length === 0) {
+    const parsed = updateSupplierSchema.safeParse(req.body);
+    if (!parsed.success) {
       return res.status(400).json({
         success: false,
-        message: parsed.success
-          ? 'No supplier fields provided'
-          : parsed.error.issues[0]?.message || 'Invalid supplier details',
+        message: parsed.error.issues[0]?.message || 'Invalid supplier details',
       });
     }
 
@@ -130,7 +219,13 @@ export async function updateSupplier(req: Request, res: Response) {
     };
 
     const fields = parsed.data as Record<string, unknown>;
-    const updates = Object.entries(fields).filter(([key]) => allowedColumns[key]);
+    const updates: [string, any][] = [];
+
+    for (const [key, col] of Object.entries(allowedColumns)) {
+      if (fields[key] !== undefined) {
+        updates.push([col, fields[key] === '' && (key === 'email' || key === 'phone' || key === 'contactPerson' || key === 'address') ? null : fields[key]]);
+      }
+    }
 
     if (updates.length === 0) {
       return res.status(400).json({
@@ -140,31 +235,33 @@ export async function updateSupplier(req: Request, res: Response) {
     }
 
     const setClause = updates
-      .map(([key]) => `${allowedColumns[key]} = ?`)
+      .map(([col]) => `${col} = ?`)
       .join(', ');
 
-    db.prepare(`
+    const params = updates.map(([, val]) => val);
+    params.push(supplierId, businessId);
+
+    await execute(`
       UPDATE suppliers
       SET ${setClause}, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND business_id = ?
-    `).run(
-      ...updates.map(([, value]) => value),
-      String(req.params.id),
-      req.businessId
-    );
+    `, params);
 
-    logAuditEvent({
-      businessId: req.businessId,
+    await logAuditEvent({
+      businessId,
+      userId: req.user?.userId || null,
       action: 'UPDATE',
       entity: 'supplier',
-      entityId: String(req.params.id),
+      entityId: supplierId,
       description: `Updated supplier: ${existing.name}`,
     });
+
+    const supplier = await getSupplier(supplierId, businessId);
 
     return res.json({
       success: true,
       message: 'Supplier updated successfully',
-      supplier: getSupplier(String(req.params.id), req.businessId),
+      supplier,
     });
   } catch (error) {
     console.error('[Suppliers] Update failed:', error);
@@ -177,7 +274,17 @@ export async function updateSupplier(req: Request, res: Response) {
 
 export async function deleteSupplier(req: Request, res: Response) {
   try {
-    const existing = getSupplier(String(req.params.id), req.businessId);
+    const businessId = req.businessId;
+    if (!businessId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Business context missing or invalid session.',
+        code: 'UNAUTHORIZED',
+      });
+    }
+
+    const supplierId = String(req.params.id);
+    const existing = await getSupplier(supplierId, businessId);
 
     if (!existing) {
       return res.status(404).json({
@@ -186,16 +293,17 @@ export async function deleteSupplier(req: Request, res: Response) {
       });
     }
 
-    db.prepare(`
+    await execute(`
       DELETE FROM suppliers
       WHERE id = ? AND business_id = ?
-    `).run(String(req.params.id), req.businessId);
+    `, [supplierId, businessId]);
 
-    logAuditEvent({
-      businessId: req.businessId,
+    await logAuditEvent({
+      businessId,
+      userId: req.user?.userId || null,
       action: 'DELETE',
       entity: 'supplier',
-      entityId: String(req.params.id),
+      entityId: supplierId,
       description: `Deleted supplier: ${existing.name}`,
     });
 

@@ -337,7 +337,7 @@ export const SuppliersPage: React.FC = () => {
                             <span>{s.phone}</span>
                           </a>
                         ) : (
-                          <span style={{ color: 'var(--text-muted)' }}>G��</span>
+                          <span style={{ color: 'var(--text-muted)' }}>—</span>
                         )}
                       </td>
 
@@ -351,7 +351,7 @@ export const SuppliersPage: React.FC = () => {
                             <span>{s.email}</span>
                           </a>
                         ) : (
-                          <span style={{ color: 'var(--text-muted)' }}>G��</span>
+                          <span style={{ color: 'var(--text-muted)' }}>—</span>
                         )}
                       </td>
 
