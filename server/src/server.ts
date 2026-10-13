@@ -68,96 +68,15 @@ if (process.env.SEED_DEMO_DATA === 'true') {
   seedDatabase().catch((err) => console.error('[Seed Error]', err));
 }
 
-// One-time startup wipe: clear all test tenants on boot (set WIPE_TENANTS_ON_START=true in Render env)
-if (process.env.WIPE_TENANTS_ON_START === 'true') {
-  import('./db/dbAdapter.ts').then(async ({ transaction }) => {
-    try {
-      console.log('[WIPE] Starting tenant wipe on startup...');
-      await transaction(async (tx) => {
-        // Keep platform owner business; delete everything else
-        const platformOwner = await tx.queryOne<any>(
-          `SELECT business_id FROM users WHERE is_platform_owner = 1 LIMIT 1`
-        );
-        const ownerBizId = platformOwner?.business_id || '';
-        const params = ownerBizId ? [ownerBizId] : [];
-        const busWhere = ownerBizId ? 'WHERE id != ?' : '';
-        const rowWhere = ownerBizId ? 'WHERE business_id != ?' : '';
-        await tx.execute(`DELETE FROM sale_items ${rowWhere}`, params);
-        await tx.execute(`DELETE FROM payments ${rowWhere}`, params);
-        await tx.execute(`DELETE FROM sales ${rowWhere}`, params);
-        await tx.execute(`DELETE FROM held_sales ${rowWhere}`, params);
-        await tx.execute(`DELETE FROM inventory_transactions ${rowWhere}`, params);
-        await tx.execute(`DELETE FROM products ${rowWhere}`, params);
-        await tx.execute(`DELETE FROM categories ${rowWhere}`, params);
-        await tx.execute(`DELETE FROM customers ${rowWhere}`, params);
-        await tx.execute(`DELETE FROM suppliers ${rowWhere}`, params);
-        await tx.execute(`DELETE FROM expenses ${rowWhere}`, params);
-        await tx.execute(`DELETE FROM expense_categories ${rowWhere}`, params);
-        await tx.execute(`DELETE FROM notifications ${rowWhere}`, params);
-        await tx.execute(`DELETE FROM tenant_payments ${rowWhere}`, params);
-        await tx.execute(`DELETE FROM settings ${rowWhere}`, params);
-        await tx.execute(`DELETE FROM audit_logs ${rowWhere}`, params);
-        await tx.execute(`DELETE FROM users WHERE is_platform_owner != 1 ${ownerBizId ? 'AND business_id != ?' : ''}`, ownerBizId ? [ownerBizId] : []);
-        await tx.execute(`DELETE FROM businesses ${busWhere}`, params);
-      });
-      console.log('[WIPE] All test tenants wiped successfully. Platform owner preserved.');
-    } catch (e: any) {
-      console.error('[WIPE] Error during startup tenant wipe:', e.message);
-    }
-  }).catch((e: any) => console.error('[WIPE] Import error:', e.message));
-}
-
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'online',
     product: 'ZYLIX POS',
-    version: '1.1.0',
-    build: '2026-10-14',
+    version: '2.0.0',
+    build: '2026-10-14-main',
     timestamp: new Date().toISOString(),
   });
-});
-
-// One-time admin wipe endpoint: POST /api/admin/wipe with {secret: ADMIN_WIPE_SECRET}
-// Only active when ADMIN_WIPE_SECRET env var is set on the server
-app.post('/api/admin/wipe', async (req, res) => {
-  const secret = process.env.ADMIN_WIPE_SECRET;
-  if (!secret || req.body?.secret !== secret) {
-    return res.status(403).json({ success: false, message: 'Forbidden' });
-  }
-  try {
-    const { transaction: tx } = await import('./db/dbAdapter.ts');
-    await tx(async (t) => {
-      const platformOwner = await t.queryOne<any>(
-        'SELECT business_id FROM users WHERE is_platform_owner = 1 LIMIT 1'
-      );
-      const ownerBizId = platformOwner?.business_id || '';
-      const params = ownerBizId ? [ownerBizId] : [];
-      const busWhere = ownerBizId ? 'WHERE id != ?' : '';
-      const rowWhere = ownerBizId ? 'WHERE business_id != ?' : '';
-      await t.execute(`DELETE FROM sale_items ${rowWhere}`, params);
-      await t.execute(`DELETE FROM payments ${rowWhere}`, params);
-      await t.execute(`DELETE FROM sales ${rowWhere}`, params);
-      await t.execute(`DELETE FROM held_sales ${rowWhere}`, params);
-      await t.execute(`DELETE FROM inventory_transactions ${rowWhere}`, params);
-      await t.execute(`DELETE FROM products ${rowWhere}`, params);
-      await t.execute(`DELETE FROM categories ${rowWhere}`, params);
-      await t.execute(`DELETE FROM customers ${rowWhere}`, params);
-      await t.execute(`DELETE FROM suppliers ${rowWhere}`, params);
-      await t.execute(`DELETE FROM expenses ${rowWhere}`, params);
-      await t.execute(`DELETE FROM expense_categories ${rowWhere}`, params);
-      await t.execute(`DELETE FROM notifications ${rowWhere}`, params);
-      await t.execute(`DELETE FROM tenant_payments ${rowWhere}`, params);
-      await t.execute(`DELETE FROM settings ${rowWhere}`, params);
-      await t.execute(`DELETE FROM audit_logs ${rowWhere}`, params);
-      await t.execute(`DELETE FROM users WHERE is_platform_owner != 1 ${ownerBizId ? 'AND business_id != ?' : ''}`, params);
-      await t.execute(`DELETE FROM businesses ${busWhere}`, params);
-    });
-    console.log('[ADMIN WIPE] Database wiped via admin endpoint');
-    return res.json({ success: true, message: 'All test tenants wiped. Platform owner preserved.' });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, message: err.message });
-  }
 });
 
 // API Routes
