@@ -5,6 +5,8 @@ import {
   createTenant,
   updateTenant,
   updateTenantStatus,
+  deleteTenant,
+  deleteAllTenants,
   getTenantPayments,
   addTenantPayment
 } from '../controllers/tenantController.ts';
@@ -20,6 +22,8 @@ router.get('/:id', getTenantById);
 router.post('/', createTenant);
 router.put('/:id', updateTenant);
 router.patch('/:id/status', updateTenantStatus);
+router.delete('/:id', deleteTenant);
+router.delete('/', deleteAllTenants);
 
 // Tenant Platform Revenue & Subscription Payments
 router.get('/:id/payments', getTenantPayments);

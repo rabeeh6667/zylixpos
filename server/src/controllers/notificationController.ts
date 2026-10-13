@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { db } from '../db/index.ts';
+import { query, queryOne, execute } from '../db/dbAdapter.ts';
 
 export async function getNotifications(req: Request, res: Response) {
   try {
@@ -16,13 +16,13 @@ export async function getNotifications(req: Request, res: Response) {
       params.push(isRead === 'true' || isRead === '1' ? 1 : 0);
     }
 
-    const notifications = db.prepare(`
+    const notifications = await query(`
       SELECT *
       FROM notifications
       ${whereClause}
       ORDER BY created_at DESC
       LIMIT ?
-    `).all(...params, limitNum);
+    `, [...params, limitNum]);
 
     return res.json({
       success: true,
@@ -39,15 +39,17 @@ export async function getUnreadCount(req: Request, res: Response) {
     const businessId = req.businessId;
     const userId = req.user?.userId || null;
 
-    const row = db.prepare(`
-      SELECT COUNT(id) as unreadCount
+    const row = (await queryOne<any>(`
+      SELECT COUNT(id) as unread_count
       FROM notifications
       WHERE business_id = ? AND (user_id IS NULL OR user_id = ?) AND is_read = 0
-    `).get(businessId, userId) as any || { unreadCount: 0 };
+    `, [businessId, userId])) || { unread_count: 0 };
+
+    const unreadCount = Number(row?.unread_count ?? row?.unreadcount ?? row?.unreadCount ?? 0);
 
     return res.json({
       success: true,
-      unreadCount: Number(row.unreadCount || 0),
+      unreadCount,
     });
   } catch (err: any) {
     console.error('[getUnreadCount Error]', err);
@@ -57,10 +59,10 @@ export async function getUnreadCount(req: Request, res: Response) {
 
 export async function markNotificationAsRead(req: Request, res: Response) {
   try {
-    const { id } = req.params;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const businessId = req.businessId;
 
-    const existing = db.prepare('SELECT id FROM notifications WHERE id = ? AND business_id = ?').get(id, businessId);
+    const existing = await queryOne('SELECT id FROM notifications WHERE id = ? AND business_id = ?', [id, businessId]);
     if (!existing) {
       return res.status(404).json({
         success: false,
@@ -68,7 +70,7 @@ export async function markNotificationAsRead(req: Request, res: Response) {
       });
     }
 
-    db.prepare('UPDATE notifications SET is_read = 1 WHERE id = ? AND business_id = ?').run(id, businessId);
+    await execute('UPDATE notifications SET is_read = 1 WHERE id = ? AND business_id = ?', [id, businessId]);
 
     return res.json({
       success: true,
@@ -85,11 +87,11 @@ export async function markAllNotificationsAsRead(req: Request, res: Response) {
     const businessId = req.businessId;
     const userId = req.user?.userId || null;
 
-    db.prepare(`
+    await execute(`
       UPDATE notifications
       SET is_read = 1
       WHERE business_id = ? AND (user_id IS NULL OR user_id = ?) AND is_read = 0
-    `).run(businessId, userId);
+    `, [businessId, userId]);
 
     return res.json({
       success: true,

@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt.ts';
-import { db } from '../db/index.ts';
+import { queryOne } from '../db/dbAdapter.ts';
 
 export function authenticate(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
@@ -67,21 +67,12 @@ export function requireRole(
  * Platform-owner status is verified from the database instead of
  * relying only on the value stored inside an existing JWT.
  */
-export function requirePlatformOwner(
+export async function requirePlatformOwner(
   req: Request,
   res: Response,
   next: NextFunction
 ) {
   if (!req.user) {
-    console.log(`[PLATFORM AUTH]
-jwtUserId=UNAUTHENTICATED
-jwtEmail=UNAUTHENTICATED
-dbUserId=NONE
-dbEmail=NONE
-role=NONE
-businessId=NONE
-isPlatformOwner=0
-authorized=false`);
     return res.status(401).json({
       success: false,
       message: 'Authentication required.',
@@ -89,13 +80,8 @@ authorized=false`);
     });
   }
 
-  const platformOwner = db
-    .prepare(`
-      SELECT id, name, email, role, status, business_id, is_platform_owner
-      FROM users
-      WHERE id = ?
-    `)
-    .get(req.user.userId) as {
+  try {
+    const platformOwner = await queryOne<{
       id: string;
       name: string;
       email: string;
@@ -103,54 +89,53 @@ authorized=false`);
       status: string;
       business_id: string;
       is_platform_owner: number;
-    } | undefined;
+    }>(`
+      SELECT id, name, email, role, status, business_id, is_platform_owner
+      FROM users
+      WHERE id = ?
+    `, [req.user.userId]);
 
-  const normalizedEmail = String(platformOwner?.email || '').trim().toLowerCase();
+    const isAuthorized = Boolean(
+      platformOwner &&
+      platformOwner.status === 'ACTIVE' &&
+      platformOwner.role === 'OWNER' &&
+      Number(platformOwner.is_platform_owner) === 1
+    );
 
-  const isAuthorized = Boolean(
-    platformOwner &&
-    platformOwner.status === 'ACTIVE' &&
-    platformOwner.role === 'OWNER' &&
-    normalizedEmail === 'owner@zylix.com'
-  );
+    if (!platformOwner) {
+      return res.status(401).json({
+        success: false,
+        message: 'User account not found.',
+        code: 'UNAUTHORIZED',
+      });
+    }
 
-  console.log(`[PLATFORM AUTH]
-jwtUserId=${req.user.userId || 'N/A'}
-jwtEmail=${req.user.email || 'N/A'}
-dbUserId=${platformOwner?.id || 'NOT_FOUND'}
-dbEmail=${platformOwner?.email || 'NOT_FOUND'}
-role=${platformOwner?.role || 'NONE'}
-businessId=${platformOwner?.business_id || req.businessId || 'NONE'}
-isPlatformOwner=${platformOwner?.is_platform_owner ?? 0}
-authorized=${isAuthorized}`);
+    if (platformOwner.status !== 'ACTIVE') {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account is not active.',
+        code: 'FORBIDDEN',
+      });
+    }
 
-  if (!platformOwner) {
-    return res.status(401).json({
+    if (!isAuthorized) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. ZYLIX Platform Owner authorization required.',
+        code: 'FORBIDDEN',
+      });
+    }
+
+    // Keep request user state synchronized with the database.
+    req.user.isPlatformOwner = true;
+    req.userRole = 'OWNER';
+
+    next();
+  } catch (err: any) {
+    return res.status(500).json({
       success: false,
-      message: 'User account not found.',
-      code: 'UNAUTHORIZED',
+      message: 'Platform authorization check failed: ' + (err.message || String(err)),
+      code: 'INTERNAL_SERVER_ERROR',
     });
   }
-
-  if (platformOwner.status !== 'ACTIVE') {
-    return res.status(403).json({
-      success: false,
-      message: 'Your account is not active.',
-      code: 'FORBIDDEN',
-    });
-  }
-
-  if (!isAuthorized) {
-    return res.status(403).json({
-      success: false,
-      message: 'Access denied. ZYLIX Platform Owner authorization required.',
-      code: 'FORBIDDEN',
-    });
-  }
-
-  // Keep request user state synchronized with the database.
-  req.user.isPlatformOwner = true;
-  req.userRole = 'OWNER';
-
-  next();
 }

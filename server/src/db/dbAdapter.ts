@@ -1,5 +1,6 @@
 import { db as sqliteDb, initDatabase as initSqliteDatabase } from './index.ts';
 import { getPgPool, initPgDatabase, translateSqlToPg, closePgPool } from './pg.ts';
+import { bootstrapPlatformOwner } from './bootstrap.ts';
 
 export function isPg(): boolean {
   return Boolean(process.env.DATABASE_URL && process.env.DATABASE_URL.trim().length > 0);
@@ -13,6 +14,7 @@ export async function initDb(): Promise<void> {
     console.log('[Database Adapter] Mode: SQLite');
     initSqliteDatabase();
   }
+  await bootstrapPlatformOwner();
 }
 
 export async function closeDb(): Promise<void> {
@@ -28,6 +30,33 @@ export async function closeDb(): Promise<void> {
   }
 }
 
+class AsyncMutex {
+  private queue: Array<() => void> = [];
+  private locked = false;
+
+  async acquire(): Promise<() => void> {
+    return new Promise<() => void>((resolve) => {
+      const release = () => {
+        if (this.queue.length > 0) {
+          const next = this.queue.shift()!;
+          next();
+        } else {
+          this.locked = false;
+        }
+      };
+
+      if (!this.locked) {
+        this.locked = true;
+        resolve(release);
+      } else {
+        this.queue.push(() => resolve(release));
+      }
+    });
+  }
+}
+
+const sqliteTransactionMutex = new AsyncMutex();
+
 export async function query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
   if (isPg()) {
     const pool = getPgPool();
@@ -35,7 +64,12 @@ export async function query<T = any>(sql: string, params: any[] = []): Promise<T
     const res = await pool.query(pgSql, params);
     return res.rows as T[];
   } else {
-    return sqliteDb.prepare(sql).all(...params) as T[];
+    const release = await sqliteTransactionMutex.acquire();
+    try {
+      return sqliteDb.prepare(sql).all(...params) as T[];
+    } finally {
+      release();
+    }
   }
 }
 
@@ -44,8 +78,13 @@ export async function queryOne<T = any>(sql: string, params: any[] = []): Promis
     const rows = await query<T>(sql, params);
     return rows.length > 0 ? rows[0] : null;
   } else {
-    const res = sqliteDb.prepare(sql).get(...params) as T | undefined;
-    return res !== undefined ? res : null;
+    const release = await sqliteTransactionMutex.acquire();
+    try {
+      const res = sqliteDb.prepare(sql).get(...params) as T | undefined;
+      return res !== undefined ? res : null;
+    } finally {
+      release();
+    }
   }
 }
 
@@ -56,8 +95,13 @@ export async function execute(sql: string, params: any[] = []): Promise<{ rowsAf
     const res = await pool.query(pgSql, params);
     return { rowsAffected: res.rowCount || 0 };
   } else {
-    const res = sqliteDb.prepare(sql).run(...params);
-    return { rowsAffected: res.changes, lastInsertId: typeof res.lastInsertRowid === 'bigint' ? Number(res.lastInsertRowid) : res.lastInsertRowid };
+    const release = await sqliteTransactionMutex.acquire();
+    try {
+      const res = sqliteDb.prepare(sql).run(...params);
+      return { rowsAffected: res.changes, lastInsertId: typeof res.lastInsertRowid === 'bigint' ? Number(res.lastInsertRowid) : res.lastInsertRowid };
+    } finally {
+      release();
+    }
   }
 }
 
@@ -100,33 +144,38 @@ export async function transaction<T>(callback: (tx: TransactionContext) => Promi
       client.release();
     }
   } else {
-    // For SQLite, execute callback using sqlite db methods
-    const tx: TransactionContext = {
-      query: async <R = any>(sql: string, params: any[] = []) => {
-        return sqliteDb.prepare(sql).all(...params) as R[];
-      },
-      queryOne: async <R = any>(sql: string, params: any[] = []) => {
-        const res = sqliteDb.prepare(sql).get(...params) as R | undefined;
-        return res !== undefined ? res : null;
-      },
-      execute: async (sql: string, params: any[] = []) => {
-        const res = sqliteDb.prepare(sql).run(...params);
-        return { rowsAffected: res.changes };
-      },
-    };
-
+    // Acquire mutex to serialize asynchronous SQLite transactions across concurrent requests
+    const releaseMutex = await sqliteTransactionMutex.acquire();
     try {
-      sqliteDb.exec('BEGIN TRANSACTION');
-      const result = await callback(tx);
-      sqliteDb.exec('COMMIT');
-      return result;
-    } catch (err) {
+      const tx: TransactionContext = {
+        query: async <R = any>(sql: string, params: any[] = []) => {
+          return sqliteDb.prepare(sql).all(...params) as R[];
+        },
+        queryOne: async <R = any>(sql: string, params: any[] = []) => {
+          const res = sqliteDb.prepare(sql).get(...params) as R | undefined;
+          return res !== undefined ? res : null;
+        },
+        execute: async (sql: string, params: any[] = []) => {
+          const res = sqliteDb.prepare(sql).run(...params);
+          return { rowsAffected: res.changes };
+        },
+      };
+
       try {
-        sqliteDb.exec('ROLLBACK');
-      } catch (rollbackErr) {
-        // Ignore rollback error if transaction wasn't active
+        sqliteDb.exec('BEGIN TRANSACTION');
+        const result = await callback(tx);
+        sqliteDb.exec('COMMIT');
+        return result;
+      } catch (err) {
+        try {
+          sqliteDb.exec('ROLLBACK');
+        } catch (rollbackErr) {
+          // Ignore rollback error if transaction wasn't active
+        }
+        throw err;
       }
-      throw err;
+    } finally {
+      releaseMutex();
     }
   }
 }

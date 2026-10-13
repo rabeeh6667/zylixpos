@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { db } from '../db/index.ts';
+import { query, queryOne } from '../db/dbAdapter.ts';
 
 // Helper to format Date object as local YYYY-MM-DD string
 function formatDateString(d: Date): string {
@@ -94,86 +94,88 @@ export async function getDashboardStats(req: Request, res: Response) {
       customEnd ? String(customEnd) : undefined
     );
 
-    // 1. Current Period Sales Revenue & Orders count (using localtime in SQLite)
-    const salesRow = db.prepare(`
-      SELECT COALESCE(SUM(grand_total), 0) as totalSales, COUNT(id) as totalOrders
+    // 1. Current Period Sales Revenue & Orders count
+    const salesRow = (await queryOne<any>(`
+      SELECT COALESCE(SUM(grand_total), 0) as total_sales, COUNT(id) as total_orders
       FROM sales
       WHERE business_id = ? AND status != 'CANCELLED' AND date(created_at, 'localtime') BETWEEN date(?) AND date(?)
-    `).get(businessId, startStr, endStr) as any || { totalSales: 0, totalOrders: 0 };
+    `, [businessId, startStr, endStr])) || {};
 
     // 2. Current Period Items Sold
-    const productsSoldRow = db.prepare(`
-      SELECT COALESCE(SUM(si.quantity), 0) as productsSold
+    const productsSoldRow = (await queryOne<any>(`
+      SELECT COALESCE(SUM(si.quantity), 0) as products_sold
       FROM sale_items si
       JOIN sales s ON si.sale_id = s.id AND si.business_id = s.business_id
       WHERE si.business_id = ? AND s.status != 'CANCELLED' AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)
-    `).get(businessId, startStr, endStr) as any || { productsSold: 0 };
+    `, [businessId, startStr, endStr])) || {};
 
     // 3. Current Period Expenses
-    const expensesRow = db.prepare(`
-      SELECT COALESCE(SUM(amount), 0) as totalExpenses
+    const expensesRow = (await queryOne<any>(`
+      SELECT COALESCE(SUM(amount), 0) as total_expenses
       FROM expenses
       WHERE business_id = ? AND status != 'ARCHIVED' AND date(expense_date, 'localtime') BETWEEN date(?) AND date(?)
-    `).get(businessId, startStr, endStr) as any || { totalExpenses: 0 };
+    `, [businessId, startStr, endStr])) || {};
 
     // 4. Current Period Cost of Goods Sold (COGS)
-    const cogsRow = db.prepare(`
-      SELECT COALESCE(SUM(si.quantity * COALESCE(p.purchase_price, 0)), 0) as totalCogs
+    const cogsRow = (await queryOne<any>(`
+      SELECT COALESCE(SUM(si.quantity * COALESCE(p.purchase_price, 0)), 0) as total_cogs
       FROM sale_items si
       JOIN sales s ON si.sale_id = s.id AND si.business_id = s.business_id
       LEFT JOIN products p ON si.product_id = p.id
       WHERE si.business_id = ? AND s.status != 'CANCELLED' AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)
-    `).get(businessId, startStr, endStr) as any || { totalCogs: 0 };
+    `, [businessId, startStr, endStr])) || {};
 
     // 5. New Customers Registered in Period
-    const newCustomersRow = db.prepare(`
-      SELECT COUNT(id) as newCustomers
+    const newCustomersRow = (await queryOne<any>(`
+      SELECT COUNT(id) as new_customers
       FROM customers
       WHERE business_id = ? AND status != 'ARCHIVED' AND date(created_at, 'localtime') BETWEEN date(?) AND date(?)
-    `).get(businessId, startStr, endStr) as any || { newCustomers: 0 };
+    `, [businessId, startStr, endStr])) || {};
 
-    // Financial Metrics
-    const totalSales = Number(salesRow.totalSales || 0);
-    const totalOrders = Number(salesRow.totalOrders || 0);
-    const productsSold = Number(productsSoldRow.productsSold || 0);
-    const totalExpenses = Number(expensesRow.totalExpenses || 0);
-    const cogs = Number(cogsRow.totalCogs || 0);
+    // Financial Metrics with robust lowercase/snake_case fallbacks
+    const totalSales = Number(salesRow.total_sales ?? salesRow.totalsales ?? salesRow.totalSales ?? 0);
+    const totalOrders = Number(salesRow.total_orders ?? salesRow.totalorders ?? salesRow.totalOrders ?? 0);
+    const productsSold = Number(productsSoldRow.products_sold ?? productsSoldRow.productssold ?? productsSoldRow.productsSold ?? 0);
+    const totalExpenses = Number(expensesRow.total_expenses ?? expensesRow.totalexpenses ?? expensesRow.totalExpenses ?? 0);
+    const cogs = Number(cogsRow.total_cogs ?? cogsRow.totalcogs ?? cogsRow.totalCogs ?? 0);
     const netProfit = Math.max(0, totalSales - cogs - totalExpenses);
-    const newCustomers = Number(newCustomersRow.newCustomers || 0);
+    const newCustomers = Number(newCustomersRow.new_customers ?? newCustomersRow.newcustomers ?? newCustomersRow.newCustomers ?? 0);
 
     // 6. Previous Period Metrics for Dynamic Comparison Percentages
-    const prevSalesRow = db.prepare(`
-      SELECT COALESCE(SUM(grand_total), 0) as prevSales, COUNT(id) as prevOrders
+    const prevSalesRow = (await queryOne<any>(`
+      SELECT COALESCE(SUM(grand_total), 0) as prev_sales, COUNT(id) as prev_orders
       FROM sales
       WHERE business_id = ? AND status != 'CANCELLED' AND date(created_at, 'localtime') BETWEEN date(?) AND date(?)
-    `).get(businessId, prevStartStr, prevEndStr) as any || { prevSales: 0, prevOrders: 0 };
+    `, [businessId, prevStartStr, prevEndStr])) || {};
 
-    const prevExpensesRow = db.prepare(`
-      SELECT COALESCE(SUM(amount), 0) as prevExpenses
+    const prevExpensesRow = (await queryOne<any>(`
+      SELECT COALESCE(SUM(amount), 0) as prev_expenses
       FROM expenses
       WHERE business_id = ? AND status != 'ARCHIVED' AND date(expense_date, 'localtime') BETWEEN date(?) AND date(?)
-    `).get(businessId, prevStartStr, prevEndStr) as any || { prevExpenses: 0 };
+    `, [businessId, prevStartStr, prevEndStr])) || {};
 
-    const prevCogsRow = db.prepare(`
-      SELECT COALESCE(SUM(si.quantity * COALESCE(p.purchase_price, 0)), 0) as prevCogs
+    const prevCogsRow = (await queryOne<any>(`
+      SELECT COALESCE(SUM(si.quantity * COALESCE(p.purchase_price, 0)), 0) as prev_cogs
       FROM sale_items si
       JOIN sales s ON si.sale_id = s.id AND si.business_id = s.business_id
       LEFT JOIN products p ON si.product_id = p.id
       WHERE si.business_id = ? AND s.status != 'CANCELLED' AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)
-    `).get(businessId, prevStartStr, prevEndStr) as any || { prevCogs: 0 };
+    `, [businessId, prevStartStr, prevEndStr])) || {};
 
-    const prevCustomersRow = db.prepare(`
-      SELECT COUNT(id) as prevCustomers
+    const prevCustomersRow = (await queryOne<any>(`
+      SELECT COUNT(id) as prev_customers
       FROM customers
       WHERE business_id = ? AND status != 'ARCHIVED' AND date(created_at, 'localtime') BETWEEN date(?) AND date(?)
-    `).get(businessId, prevStartStr, prevEndStr) as any || { prevCustomers: 0 };
+    `, [businessId, prevStartStr, prevEndStr])) || {};
 
-    const prevSales = Number(prevSalesRow.prevSales || 0);
-    const prevOrders = Number(prevSalesRow.prevOrders || 0);
-    const prevCustomers = Number(prevCustomersRow.prevCustomers || 0);
-    const prevNetProfit = Math.max(0, prevSales - Number(prevCogsRow.prevCogs || 0) - Number(prevExpensesRow.prevExpenses || 0));
+    const prevSales = Number(prevSalesRow.prev_sales ?? prevSalesRow.prevsales ?? prevSalesRow.prevSales ?? 0);
+    const prevOrders = Number(prevSalesRow.prev_orders ?? prevSalesRow.prevorders ?? prevSalesRow.prevOrders ?? 0);
+    const prevCustomers = Number(prevCustomersRow.prev_customers ?? prevCustomersRow.prevcustomers ?? prevCustomersRow.prevCustomers ?? 0);
+    const prevCogs = Number(prevCogsRow.prev_cogs ?? prevCogsRow.prevcogs ?? prevCogsRow.prevCogs ?? 0);
+    const prevExpenses = Number(prevExpensesRow.prev_expenses ?? prevExpensesRow.prevexpenses ?? prevExpensesRow.prevExpenses ?? 0);
+    const prevNetProfit = Math.max(0, prevSales - prevCogs - prevExpenses);
 
-    // Dynamic Comparison Function (returns percentage change or null if no previous data)
+    // Dynamic Comparison Function
     const calcGrowth = (current: number, prev: number): number | null => {
       if (prev > 0) {
         return Number((((current - prev) / prev) * 100).toFixed(1));
@@ -182,26 +184,30 @@ export async function getDashboardStats(req: Request, res: Response) {
     };
 
     // Low stock and total catalog counts
-    const lowStockRow = db.prepare(`
-      SELECT COUNT(id) as lowStockCount
+    const lowStockRow = (await queryOne<any>(`
+      SELECT COUNT(id) as low_stock_count
       FROM products
       WHERE business_id = ? AND current_stock <= min_stock AND status = 'ACTIVE'
-    `).get(businessId) as any || { lowStockCount: 0 };
+    `, [businessId])) || {};
 
-    const totalProductsRow = db.prepare(`
-      SELECT COUNT(id) as totalProducts
+    const totalProductsRow = (await queryOne<any>(`
+      SELECT COUNT(id) as total_products
       FROM products
       WHERE business_id = ? AND status = 'ACTIVE'
-    `).get(businessId) as any || { totalProducts: 0 };
+    `, [businessId])) || {};
 
-    const totalCustomersRow = db.prepare(`
-      SELECT COUNT(id) as totalCustomers
+    const totalCustomersRow = (await queryOne<any>(`
+      SELECT COUNT(id) as total_customers
       FROM customers
       WHERE business_id = ? AND status != 'ARCHIVED'
-    `).get(businessId) as any || { totalCustomers: 0 };
+    `, [businessId])) || {};
+
+    const lowStockCount = Number(lowStockRow.low_stock_count ?? lowStockRow.lowstockcount ?? lowStockRow.lowStockCount ?? 0);
+    const totalProducts = Number(totalProductsRow.total_products ?? totalProductsRow.totalproducts ?? totalProductsRow.totalProducts ?? 0);
+    const totalCustomers = Number(totalCustomersRow.total_customers ?? totalCustomersRow.totalcustomers ?? totalCustomersRow.totalCustomers ?? 0);
 
     // 7. Sales Over Time (Chart Data) for Period
-    const salesGrouped = db.prepare(`
+    const salesGrouped = await query<any>(`
       SELECT
         date(created_at, 'localtime') as date,
         COALESCE(SUM(grand_total), 0) as amount
@@ -209,11 +215,14 @@ export async function getDashboardStats(req: Request, res: Response) {
       WHERE business_id = ? AND status != 'CANCELLED' AND date(created_at, 'localtime') BETWEEN date(?) AND date(?)
       GROUP BY date(created_at, 'localtime')
       ORDER BY date(created_at, 'localtime') ASC
-    `).all(businessId, startStr, endStr) as any[];
+    `, [businessId, startStr, endStr]);
 
     // Map sales to fill zero-value days in range
     const salesMap = new Map<string, number>();
-    salesGrouped.forEach((row) => salesMap.set(row.date, row.amount));
+    salesGrouped.forEach((row) => {
+      const dStr = typeof row.date === 'string' ? row.date.split('T')[0] : formatDateString(new Date(row.date));
+      salesMap.set(dStr, Number(row.amount || 0));
+    });
 
     const salesOverTime: { day: string; amount: number }[] = [];
     const curDate = new Date(startStr);
@@ -228,44 +237,44 @@ export async function getDashboardStats(req: Request, res: Response) {
     }
 
     // 8. Top 5 Best-Selling Products in Date Range
-    const topProducts = db.prepare(`
-      SELECT p.name, SUM(si.quantity) as sold, SUM(si.subtotal) as revenue
+    const topProducts = await query(`
+      SELECT p.id, p.name, SUM(si.quantity) as sold, SUM(si.subtotal) as revenue
       FROM sale_items si
       JOIN sales s ON si.sale_id = s.id AND si.business_id = s.business_id
       JOIN products p ON si.product_id = p.id
       WHERE si.business_id = ? AND s.status != 'CANCELLED' AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)
-      GROUP BY p.id
+      GROUP BY p.id, p.name
       ORDER BY revenue DESC
       LIMIT 5
-    `).all(businessId, startStr, endStr);
+    `, [businessId, startStr, endStr]);
 
-    // 9. Payment Methods Distribution in Date Range (with fallback to sales table)
-    let paymentMethods = db.prepare(`
+    // 9. Payment Methods Distribution in Date Range
+    let paymentMethods = await query<any>(`
       SELECT p.payment_method, COUNT(p.id) as count, SUM(p.amount) as total
       FROM payments p
       JOIN sales s ON p.sale_id = s.id AND p.business_id = s.business_id
       WHERE p.business_id = ? AND p.status = 'COMPLETED' AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)
       GROUP BY p.payment_method
-    `).all(businessId, startStr, endStr) as any[];
+    `, [businessId, startStr, endStr]);
 
     if (!paymentMethods || paymentMethods.length === 0) {
-      paymentMethods = db.prepare(`
+      paymentMethods = await query<any>(`
         SELECT s.payment_method, COUNT(s.id) as count, SUM(s.grand_total) as total
         FROM sales s
         WHERE s.business_id = ? AND s.status != 'CANCELLED' AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)
         GROUP BY s.payment_method
-      `).all(businessId, startStr, endStr) as any[];
+      `, [businessId, startStr, endStr]);
     }
 
     // 10. Recent Sales List (Latest 5 Sales)
-    const recentSales = db.prepare(`
+    const recentSales = await query(`
       SELECT s.id, s.invoice_number, s.grand_total, s.status, s.payment_method, s.created_at, c.name as customer_name
       FROM sales s
       LEFT JOIN customers c ON s.customer_id = c.id
       WHERE s.business_id = ? AND date(s.created_at, 'localtime') BETWEEN date(?) AND date(?)
       ORDER BY s.created_at DESC
       LIMIT 5
-    `).all(businessId, startStr, endStr);
+    `, [businessId, startStr, endStr]);
 
     return res.json({
       success: true,
@@ -276,24 +285,22 @@ export async function getDashboardStats(req: Request, res: Response) {
         endDate: endStr,
       },
       stats: {
-        // Backward compatibility
         todaySales: totalSales,
         todayOrders: totalOrders,
         productsSold,
         grossProfit: netProfit,
         netEstimatedProfit: netProfit,
         todayExpenses: totalExpenses,
-        lowStockItems: Number(lowStockRow.lowStockCount || 0),
-        totalProducts: Number(totalProductsRow.totalProducts || 0),
-        totalCustomers: Number(totalCustomersRow.totalCustomers || 0),
-        // Range-aware fields
+        lowStockItems: lowStockCount,
+        totalProducts,
+        totalCustomers,
         totalSales,
         totalOrders,
         newCustomers,
         totalExpenses,
         cogs,
         netProfit,
-        lowStockCount: Number(lowStockRow.lowStockCount || 0),
+        lowStockCount,
         comparisons: {
           salesGrowth: calcGrowth(totalSales, prevSales),
           ordersGrowth: calcGrowth(totalOrders, prevOrders),

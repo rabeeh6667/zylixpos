@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { db } from '../db/index.ts';
+import { query, queryOne, execute, transaction } from '../db/dbAdapter.ts';
 import { hashPassword } from '../utils/password.ts';
 import { cryptoUUID } from '../utils/crypto.ts';
 import { logAuditEvent } from '../utils/auditLogger.ts';
@@ -67,7 +67,7 @@ export async function getTenants(req: Request, res: Response) {
     }
 
     // Global Summary Aggregation across all tenants
-    const summary = db.prepare(`
+    const summary = (await queryOne<any>(`
       SELECT
         (SELECT COUNT(id) FROM businesses) as total_tenants,
         (SELECT COUNT(id) FROM businesses WHERE COALESCE(status, 'ACTIVE') = 'ACTIVE') as active_tenants,
@@ -80,7 +80,7 @@ export async function getTenants(req: Request, res: Response) {
         (SELECT COALESCE(SUM(amount), 0) FROM tenant_payments) as platform_collected_revenue,
         (SELECT COALESCE(SUM(amount), 0) FROM tenant_payments WHERE payment_type = 'INITIAL_PAYMENT') as total_initial_payments,
         (SELECT COALESCE(SUM(amount), 0) FROM tenant_payments WHERE payment_type = 'MONTHLY_SUBSCRIPTION') as total_subscriptions
-    `).get() as any || {
+    `)) || {
       total_tenants: 0,
       active_tenants: 0,
       suspended_tenants: 0,
@@ -95,18 +95,18 @@ export async function getTenants(req: Request, res: Response) {
     };
 
     // Count Total matching search/filter
-    const countRow = db.prepare(`
+    const countRow = (await queryOne<any>(`
       SELECT COUNT(DISTINCT b.id) as total
       FROM businesses b
       LEFT JOIN users u ON b.id = u.business_id AND u.role = 'OWNER'
       ${whereClause}
-    `).get(...params) as any || { total: 0 };
+    `, params)) || { total: 0 };
 
     const total = Number(countRow.total || 0);
     const totalPages = Math.ceil(total / limitNum);
 
     // List Query with Aggregations
-    const query = `
+    const listSql = `
       SELECT
         b.id,
         b.name as business_name,
@@ -138,12 +138,12 @@ export async function getTenants(req: Request, res: Response) {
       FROM businesses b
       LEFT JOIN users u ON b.id = u.business_id AND u.role = 'OWNER'
       ${whereClause}
-      GROUP BY b.id
+      GROUP BY b.id, u.id, u.name, u.email
       ORDER BY b.created_at DESC
       LIMIT ? OFFSET ?
     `;
 
-    const items = db.prepare(query).all(...params, limitNum, offset);
+    const items = await query(listSql, [...params, limitNum, offset]);
 
     return res.json({
       success: true,
@@ -163,15 +163,15 @@ export async function getTenants(req: Request, res: Response) {
 
 export async function getTenantById(req: Request, res: Response) {
   try {
-    const { id } = req.params;
-    const { range, startDate, endDate } = req.query;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const { startDate, endDate } = req.query;
 
-    const business = db.prepare(`
+    const business = await queryOne<any>(`
       SELECT b.*, COALESCE(b.status, 'ACTIVE') as status, u.id as owner_id, u.name as owner_name, u.email as owner_email
       FROM businesses b
       LEFT JOIN users u ON b.id = u.business_id AND u.role = 'OWNER'
       WHERE b.id = ?
-    `).get(id) as any;
+    `, [id]);
 
     if (!business) {
       return res.status(404).json({ success: false, message: 'Tenant business not found.', code: 'RESOURCE_NOT_FOUND' });
@@ -184,66 +184,82 @@ export async function getTenantById(req: Request, res: Response) {
     const dateParamsExpenses: any[] = [id];
 
     if (startDate) {
-      dateFilterSales += ' AND date(created_at) >= date(?)';
+      dateFilterSales += ' AND date(created_at, "localtime") >= date(?)';
       dateParamsSales.push(String(startDate));
-      dateFilterExpenses += ' AND date(expense_date) >= date(?)';
+      dateFilterExpenses += ' AND date(expense_date, "localtime") >= date(?)';
       dateParamsExpenses.push(String(startDate));
     }
     if (endDate) {
-      dateFilterSales += ' AND date(created_at) <= date(?)';
+      dateFilterSales += ' AND date(created_at, "localtime") <= date(?)';
       dateParamsSales.push(String(endDate));
-      dateFilterExpenses += ' AND date(expense_date) <= date(?)';
+      dateFilterExpenses += ' AND date(expense_date, "localtime") <= date(?)';
       dateParamsExpenses.push(String(endDate));
     }
 
     // Live Aggregated Database Metrics
-    const usersCount = Number((db.prepare('SELECT COUNT(id) as cnt FROM users WHERE business_id = ?').get(id) as any)?.cnt || 0);
-    const activeUsersCount = Number((db.prepare("SELECT COUNT(id) as cnt FROM users WHERE business_id = ? AND status = 'ACTIVE'").get(id) as any)?.cnt || 0);
-    const productsCount = Number((db.prepare("SELECT COUNT(id) as cnt FROM products WHERE business_id = ? AND status != 'ARCHIVED'").get(id) as any)?.cnt || 0);
-    const customersCount = Number((db.prepare("SELECT COUNT(id) as cnt FROM customers WHERE business_id = ? AND status != 'ARCHIVED'").get(id) as any)?.cnt || 0);
-    
-    const salesRow = db.prepare(`
-      SELECT COUNT(id) as ordersCount, COALESCE(SUM(grand_total), 0) as revenue
+    const usersCountRow = await queryOne<any>('SELECT COUNT(id) as cnt FROM users WHERE business_id = ?', [id]);
+    const usersCount = Number(usersCountRow?.cnt || 0);
+
+    const activeUsersCountRow = await queryOne<any>("SELECT COUNT(id) as cnt FROM users WHERE business_id = ? AND status = 'ACTIVE'", [id]);
+    const activeUsersCount = Number(activeUsersCountRow?.cnt || 0);
+
+    const productsCountRow = await queryOne<any>("SELECT COUNT(id) as cnt FROM products WHERE business_id = ? AND status != 'ARCHIVED'", [id]);
+    const productsCount = Number(productsCountRow?.cnt || 0);
+
+    const customersCountRow = await queryOne<any>("SELECT COUNT(id) as cnt FROM customers WHERE business_id = ? AND status != 'ARCHIVED'", [id]);
+    const customersCount = Number(customersCountRow?.cnt || 0);
+
+    const salesRow = (await queryOne<any>(`
+      SELECT COUNT(id) as orders_count, COALESCE(SUM(grand_total), 0) as revenue
       FROM sales
       WHERE business_id = ? AND status != 'CANCELLED' ${dateFilterSales}
-    `).get(...dateParamsSales) as any || { ordersCount: 0, revenue: 0 };
+    `, dateParamsSales)) || { orders_count: 0, revenue: 0 };
 
-    const cogsRow = db.prepare(`
+    const cogsRow = (await queryOne<any>(`
       SELECT COALESCE(SUM(si.quantity * p.purchase_price), 0) as cogs
       FROM sale_items si
       JOIN products p ON si.product_id = p.id
       JOIN sales s ON si.sale_id = s.id
       WHERE s.business_id = ? AND s.status != 'CANCELLED' ${dateFilterSales.replace(/created_at/g, 's.created_at')}
-    `).get(...dateParamsSales) as any || { cogs: 0 };
+    `, dateParamsSales)) || { cogs: 0 };
 
-    const expensesRow = db.prepare(`
-      SELECT COALESCE(SUM(amount), 0) as totalExpenses
+    const expensesRow = (await queryOne<any>(`
+      SELECT COALESCE(SUM(amount), 0) as total_expenses
       FROM expenses
       WHERE business_id = ? AND status != 'ARCHIVED' ${dateFilterExpenses}
-    `).get(...dateParamsExpenses) as any || { totalExpenses: 0 };
+    `, dateParamsExpenses)) || { total_expenses: 0 };
 
-    const invValRow = db.prepare("SELECT COALESCE(SUM(current_stock * purchase_price), 0) as invVal, COUNT(CASE WHEN current_stock <= min_stock THEN 1 END) as lowStock FROM products WHERE business_id = ? AND status = 'ACTIVE'").get(id) as any || { invVal: 0, lowStock: 0 };
-    const lastActivityRow = db.prepare("SELECT MAX(created_at) as lastAct FROM sales WHERE business_id = ?").get(id) as any;
+    const invValRow = (await queryOne<any>(`
+      SELECT COALESCE(SUM(current_stock * purchase_price), 0) as inv_val, COUNT(CASE WHEN current_stock <= min_stock THEN 1 END) as low_stock
+      FROM products
+      WHERE business_id = ? AND status = 'ACTIVE'
+    `, [id])) || { inv_val: 0, low_stock: 0 };
 
-    const revenue = Number(salesRow.revenue || 0);
-    const cogs = Number(cogsRow.cogs || 0);
-    const totalExpenses = Number(expensesRow.totalExpenses || 0);
+    const lastActivityRow = await queryOne<any>('SELECT MAX(created_at) as last_act FROM sales WHERE business_id = ?', [id]);
+
+    const revenue = Number(salesRow?.revenue || 0);
+    const ordersCount = Number(salesRow?.orders_count ?? salesRow?.orderscount ?? salesRow?.ordersCount ?? 0);
+    const cogs = Number(cogsRow?.cogs || 0);
+    const totalExpenses = Number(expensesRow?.total_expenses ?? expensesRow?.totalexpenses ?? expensesRow?.totalExpenses ?? 0);
     const estimatedProfit = revenue - cogs - totalExpenses;
+    const invVal = Number(invValRow?.inv_val ?? invValRow?.invval ?? invValRow?.invVal ?? 0);
+    const lowStock = Number(invValRow?.low_stock ?? invValRow?.lowstock ?? invValRow?.lowStock ?? 0);
+    const lastActivity = lastActivityRow?.last_act ?? lastActivityRow?.lastact ?? lastActivityRow?.lastAct ?? null;
 
     // Recent Activity Log & Transactions
-    const recentSales = db.prepare("SELECT s.id, s.invoice_number, s.grand_total, s.created_at, s.payment_method FROM sales s WHERE s.business_id = ? ORDER BY s.created_at DESC LIMIT 5").all(id);
-    const recentExpenses = db.prepare("SELECT e.id, e.title, e.category, e.amount, e.created_at FROM expenses e WHERE e.business_id = ? ORDER BY e.created_at DESC LIMIT 5").all(id);
-    const recentAuditLogs = db.prepare("SELECT a.id, a.action, a.entity, a.description, a.created_at, u.name as user_name FROM audit_logs a LEFT JOIN users u ON a.user_id = u.id WHERE a.business_id = ? ORDER BY a.created_at DESC LIMIT 10").all(id);
+    const recentSales = await query('SELECT s.id, s.invoice_number, s.grand_total, s.created_at, s.payment_method FROM sales s WHERE s.business_id = ? ORDER BY s.created_at DESC LIMIT 5', [id]);
+    const recentExpenses = await query('SELECT e.id, e.title, e.category, e.amount, e.created_at FROM expenses e WHERE e.business_id = ? ORDER BY e.created_at DESC LIMIT 5', [id]);
+    const recentAuditLogs = await query('SELECT a.id, a.action, a.entity, a.description, a.created_at, u.name as user_name FROM audit_logs a LEFT JOIN users u ON a.user_id = u.id WHERE a.business_id = ? ORDER BY a.created_at DESC LIMIT 10', [id]);
 
-    const tenantPayments = db.prepare("SELECT id, payment_type, amount, payment_date, payment_method, notes, created_at FROM tenant_payments WHERE business_id = ? ORDER BY payment_date DESC").all(id);
-    const platformRevenueRow = db.prepare(`
+    const tenantPayments = await query('SELECT id, payment_type, amount, payment_date, payment_method, notes, created_at FROM tenant_payments WHERE business_id = ? ORDER BY payment_date DESC', [id]);
+    const platformRevenueRow = await queryOne<any>(`
       SELECT
         COALESCE(SUM(amount), 0) as total_collected,
         COALESCE(SUM(CASE WHEN payment_type = 'INITIAL_PAYMENT' THEN amount ELSE 0 END), 0) as initial_total,
         COALESCE(SUM(CASE WHEN payment_type = 'MONTHLY_SUBSCRIPTION' THEN amount ELSE 0 END), 0) as subscription_total
       FROM tenant_payments
       WHERE business_id = ?
-    `).get(id) as any;
+    `, [id]);
 
     return res.json({
       success: true,
@@ -253,8 +269,8 @@ export async function getTenantById(req: Request, res: Response) {
         activeUsers: activeUsersCount,
         totalProducts: productsCount,
         totalCustomers: customersCount,
-        totalSales: Number(salesRow.ordersCount || 0),
-        totalOrders: Number(salesRow.ordersCount || 0),
+        totalSales: ordersCount,
+        totalOrders: ordersCount,
         totalRevenue: revenue,
         platformCollectedRevenue: Number(platformRevenueRow?.total_collected || 0),
         initialPaymentTotal: Number(platformRevenueRow?.initial_total || 0),
@@ -262,9 +278,9 @@ export async function getTenantById(req: Request, res: Response) {
         totalExpenses,
         cogs,
         estimatedProfit,
-        inventoryValuation: Number(invValRow.invVal || 0),
-        lowStockCount: Number(invValRow.lowStock || 0),
-        lastActivity: lastActivityRow?.lastAct || null,
+        inventoryValuation: invVal,
+        lowStockCount: lowStock,
+        lastActivity,
       },
       recentSales,
       recentExpenses,
@@ -330,7 +346,7 @@ export async function createTenant(req: Request, res: Response) {
     } = parseResult.data;
 
     // Check duplicate owner email
-    const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(ownerEmail.toLowerCase());
+    const existingUser = await queryOne('SELECT id FROM users WHERE email = ?', [ownerEmail.toLowerCase()]);
     if (existingUser) {
       return res.status(409).json({
         success: false,
@@ -343,14 +359,14 @@ export async function createTenant(req: Request, res: Response) {
     const userId = cryptoUUID();
     const passwordHash = await hashPassword(password);
 
-    // Atomic Database Insertion
-    db.transaction(() => {
+    // Atomic Database Insertion via transaction adapter
+    await transaction(async (tx) => {
       // 1. Business
-      db.prepare(`
+      await tx.execute(`
         INSERT INTO businesses (
           id, name, business_type, phone, email, address, city, state, country, tax_number, currency, timezone, description, status
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
+      `, [
         businessId,
         businessName.trim(),
         businessType ? businessType.trim() : 'Retail POS',
@@ -365,30 +381,28 @@ export async function createTenant(req: Request, res: Response) {
         timezone,
         description || null,
         status
-      );
+      ]);
 
       // 2. Owner User
-      db.prepare(`
+      await tx.execute(`
         INSERT INTO users (id, business_id, name, email, password_hash, role, status, is_platform_owner)
         VALUES (?, ?, ?, ?, ?, 'OWNER', 'ACTIVE', 0)
-      `).run(userId, businessId, ownerName.trim(), ownerEmail.toLowerCase().trim(), passwordHash);
+      `, [userId, businessId, ownerName.trim(), ownerEmail.toLowerCase().trim(), passwordHash]);
 
       // 3. Default Settings
-      const insertSetting = db.prepare('INSERT INTO settings (id, business_id, key, value) VALUES (?, ?, ?, ?)');
-      insertSetting.run(cryptoUUID(), businessId, 'currency', currency);
-      insertSetting.run(cryptoUUID(), businessId, 'currency_symbol', currency === 'INR' ? '₹' : '$');
-      insertSetting.run(cryptoUUID(), businessId, 'tax_rate', '18.0');
-      insertSetting.run(cryptoUUID(), businessId, 'receipt_header', `${businessName} - Thank you for shopping with us!`);
-      insertSetting.run(cryptoUUID(), businessId, 'low_stock_threshold', '5');
-      insertSetting.run(cryptoUUID(), businessId, 'allow_negative_inventory', 'false');
+      await tx.execute('INSERT INTO settings (id, business_id, key, value) VALUES (?, ?, ?, ?)', [cryptoUUID(), businessId, 'currency', currency]);
+      await tx.execute('INSERT INTO settings (id, business_id, key, value) VALUES (?, ?, ?, ?)', [cryptoUUID(), businessId, 'currency_symbol', currency === 'INR' ? '₹' : '$']);
+      await tx.execute('INSERT INTO settings (id, business_id, key, value) VALUES (?, ?, ?, ?)', [cryptoUUID(), businessId, 'tax_rate', '18.0']);
+      await tx.execute('INSERT INTO settings (id, business_id, key, value) VALUES (?, ?, ?, ?)', [cryptoUUID(), businessId, 'receipt_header', `${businessName} - Thank you for shopping with us!`]);
+      await tx.execute('INSERT INTO settings (id, business_id, key, value) VALUES (?, ?, ?, ?)', [cryptoUUID(), businessId, 'low_stock_threshold', '5']);
+      await tx.execute('INSERT INTO settings (id, business_id, key, value) VALUES (?, ?, ?, ?)', [cryptoUUID(), businessId, 'allow_negative_inventory', 'false']);
 
       // 4. Default Expense Categories
-      const insertCategory = db.prepare('INSERT OR IGNORE INTO expense_categories (id, business_id, name, description) VALUES (?, ?, ?, ?)');
       const defaultCategories = ['Rent & Facilities', 'Utilities', 'Staff Salaries', 'Inventory Supplies', 'Marketing & Ads', 'Miscellaneous'];
       for (const cat of defaultCategories) {
-        insertCategory.run(cryptoUUID(), businessId, cat, `Default category for ${cat}`);
+        await tx.execute('INSERT OR IGNORE INTO expense_categories (id, business_id, name, description) VALUES (?, ?, ?, ?)', [cryptoUUID(), businessId, cat, `Default category for ${cat}`]);
       }
-    })();
+    });
 
     logAuditEvent({
       businessId: req.businessId || businessId,
@@ -441,9 +455,9 @@ export async function createTenant(req: Request, res: Response) {
 
 export async function updateTenant(req: Request, res: Response) {
   try {
-    const { id } = req.params;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
-    const existingBus = db.prepare('SELECT * FROM businesses WHERE id = ?').get(id) as any;
+    const existingBus = await queryOne<any>('SELECT * FROM businesses WHERE id = ?', [id]);
     if (!existingBus) {
       return res.status(404).json({ success: false, message: 'Tenant business not found.', code: 'RESOURCE_NOT_FOUND' });
     }
@@ -478,15 +492,15 @@ export async function updateTenant(req: Request, res: Response) {
     if (d.description !== undefined) { busUpdates.push('description = ?'); busParams.push(d.description || null); }
     if (d.status !== undefined) { busUpdates.push('status = ?'); busParams.push(d.status); }
 
-    db.transaction(() => {
+    await transaction(async (tx) => {
       if (busUpdates.length > 0) {
         busUpdates.push('updated_at = CURRENT_TIMESTAMP');
         busParams.push(id);
-        db.prepare(`UPDATE businesses SET ${busUpdates.join(', ')} WHERE id = ?`).run(...busParams);
+        await tx.execute(`UPDATE businesses SET ${busUpdates.join(', ')} WHERE id = ?`, busParams);
       }
 
       // Updates for owner user
-      const ownerUser = db.prepare("SELECT id FROM users WHERE business_id = ? AND role = 'OWNER'").get(id) as any;
+      const ownerUser = await tx.queryOne<any>("SELECT id FROM users WHERE business_id = ? AND role = 'OWNER'", [id]);
       if (ownerUser) {
         const userUpdates: string[] = [];
         const userParams: any[] = [];
@@ -497,10 +511,10 @@ export async function updateTenant(req: Request, res: Response) {
         if (userUpdates.length > 0) {
           userUpdates.push('updated_at = CURRENT_TIMESTAMP');
           userParams.push(ownerUser.id);
-          db.prepare(`UPDATE users SET ${userUpdates.join(', ')} WHERE id = ?`).run(...userParams);
+          await tx.execute(`UPDATE users SET ${userUpdates.join(', ')} WHERE id = ?`, userParams);
         }
       }
-    })();
+    });
 
     logAuditEvent({
       businessId: (req.businessId || id) as string,
@@ -512,12 +526,12 @@ export async function updateTenant(req: Request, res: Response) {
       metadata: d,
     });
 
-    const updatedTenant = db.prepare(`
+    const updatedTenant = await queryOne(`
       SELECT b.*, b.name as business_name, COALESCE(b.status, 'ACTIVE') as status, u.name as owner_name, u.email as owner_email
       FROM businesses b
       LEFT JOIN users u ON b.id = u.business_id AND u.role = 'OWNER'
       WHERE b.id = ?
-    `).get(id);
+    `, [id]);
 
     return res.json({
       success: true,
@@ -532,7 +546,7 @@ export async function updateTenant(req: Request, res: Response) {
 
 export async function updateTenantStatus(req: Request, res: Response) {
   try {
-    const { id } = req.params;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const { status } = req.body;
 
     if (!status || !['ACTIVE', 'SUSPENDED'].includes(String(status).toUpperCase())) {
@@ -541,14 +555,14 @@ export async function updateTenantStatus(req: Request, res: Response) {
 
     const newStatus = String(status).toUpperCase();
 
-    const existing = db.prepare('SELECT id, name FROM businesses WHERE id = ?').get(id) as any;
+    const existing = await queryOne<any>('SELECT id, name FROM businesses WHERE id = ?', [id]);
     if (!existing) {
       return res.status(404).json({ success: false, message: 'Tenant business not found.', code: 'RESOURCE_NOT_FOUND' });
     }
 
-    db.prepare('UPDATE businesses SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(newStatus, id);
+    await execute('UPDATE businesses SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [newStatus, id]);
     if (newStatus === 'ACTIVE') {
-      db.prepare("UPDATE users SET status = 'ACTIVE' WHERE business_id = ? AND (status = 'PENDING' OR status IS NULL)").run(id);
+      await execute("UPDATE users SET status = 'ACTIVE' WHERE business_id = ? AND (status = 'PENDING' OR status IS NULL)", [id]);
     }
 
     const actionType = newStatus === 'SUSPENDED' ? 'TENANT_SUSPENDED' : 'TENANT_ACTIVATED';
@@ -586,7 +600,7 @@ const addPaymentSchema = z.object({
 
 export async function addTenantPayment(req: Request, res: Response) {
   try {
-    const { id } = req.params;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const parseResult = addPaymentSchema.safeParse(req.body);
     if (!parseResult.success) {
       return res.status(400).json({
@@ -597,7 +611,7 @@ export async function addTenantPayment(req: Request, res: Response) {
       });
     }
 
-    const tenant = db.prepare('SELECT id, name FROM businesses WHERE id = ?').get(id) as any;
+    const tenant = await queryOne<any>('SELECT id, name FROM businesses WHERE id = ?', [id]);
     if (!tenant) {
       return res.status(404).json({ success: false, message: 'Tenant business not found.', code: 'RESOURCE_NOT_FOUND' });
     }
@@ -606,10 +620,10 @@ export async function addTenantPayment(req: Request, res: Response) {
     const paymentId = cryptoUUID();
     const dateToUse = paymentDate || new Date().toISOString();
 
-    db.prepare(`
+    await execute(`
       INSERT INTO tenant_payments (id, business_id, payment_type, amount, payment_date, payment_method, notes, created_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    `, [
       paymentId,
       id,
       paymentType,
@@ -618,7 +632,7 @@ export async function addTenantPayment(req: Request, res: Response) {
       paymentMethod || 'UPI',
       notes || null,
       req.user?.userId || null
-    );
+    ]);
 
     logAuditEvent({
       businessId: id as string,
@@ -651,27 +665,27 @@ export async function addTenantPayment(req: Request, res: Response) {
 
 export async function getTenantPayments(req: Request, res: Response) {
   try {
-    const { id } = req.params;
-    const tenant = db.prepare('SELECT id, name FROM businesses WHERE id = ?').get(id) as any;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const tenant = await queryOne<any>('SELECT id, name FROM businesses WHERE id = ?', [id]);
     if (!tenant) {
       return res.status(404).json({ success: false, message: 'Tenant business not found.', code: 'RESOURCE_NOT_FOUND' });
     }
 
-    const payments = db.prepare(`
+    const payments = await query(`
       SELECT id, business_id, payment_type, amount, payment_date, payment_method, notes, created_at
       FROM tenant_payments
       WHERE business_id = ?
       ORDER BY payment_date DESC, created_at DESC
-    `).all(id);
+    `, [id]);
 
-    const totals = db.prepare(`
+    const totals = await queryOne<any>(`
       SELECT
         COALESCE(SUM(amount), 0) as total_collected,
         COALESCE(SUM(CASE WHEN payment_type = 'INITIAL_PAYMENT' THEN amount ELSE 0 END), 0) as initial_total,
         COALESCE(SUM(CASE WHEN payment_type = 'MONTHLY_SUBSCRIPTION' THEN amount ELSE 0 END), 0) as subscription_total
       FROM tenant_payments
       WHERE business_id = ?
-    `).get(id) as any;
+    `, [id]);
 
     return res.json({
       success: true,
@@ -684,6 +698,132 @@ export async function getTenantPayments(req: Request, res: Response) {
     });
   } catch (err: any) {
     console.error('[getTenantPayments Error]', err);
+    return res.status(500).json({ success: false, message: err.message, code: 'INTERNAL_SERVER_ERROR' });
+  }
+}
+
+export async function deleteTenant(req: Request, res: Response) {
+  try {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+    const existingBus = await queryOne<any>('SELECT * FROM businesses WHERE id = ?', [id]);
+    if (!existingBus) {
+      return res.status(404).json({ success: false, message: 'Tenant business not found.', code: 'RESOURCE_NOT_FOUND' });
+    }
+
+    if (req.businessId === id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete your active session business.',
+        code: 'BAD_REQUEST',
+      });
+    }
+
+    await transaction(async (tx) => {
+      await tx.execute('DELETE FROM sale_items WHERE business_id = ?', [id]);
+      await tx.execute('DELETE FROM payments WHERE business_id = ?', [id]);
+      await tx.execute('DELETE FROM sales WHERE business_id = ?', [id]);
+      await tx.execute('DELETE FROM held_sales WHERE business_id = ?', [id]);
+      await tx.execute('DELETE FROM inventory_transactions WHERE business_id = ?', [id]);
+      await tx.execute('DELETE FROM products WHERE business_id = ?', [id]);
+      await tx.execute('DELETE FROM categories WHERE business_id = ?', [id]);
+      await tx.execute('DELETE FROM customers WHERE business_id = ?', [id]);
+      await tx.execute('DELETE FROM suppliers WHERE business_id = ?', [id]);
+      await tx.execute('DELETE FROM expenses WHERE business_id = ?', [id]);
+      await tx.execute('DELETE FROM expense_categories WHERE business_id = ?', [id]);
+      await tx.execute('DELETE FROM notifications WHERE business_id = ?', [id]);
+      await tx.execute('DELETE FROM tenant_payments WHERE business_id = ?', [id]);
+      await tx.execute('DELETE FROM settings WHERE business_id = ?', [id]);
+      await tx.execute('DELETE FROM audit_logs WHERE business_id = ?', [id]);
+      await tx.execute('DELETE FROM users WHERE business_id = ?', [id]);
+      await tx.execute('DELETE FROM businesses WHERE id = ?', [id]);
+    });
+
+    logAuditEvent({
+      businessId: (req.businessId || id) as string,
+      userId: req.user?.userId,
+      action: 'TENANT_DELETED',
+      entity: 'business',
+      entityId: id as string,
+      description: `Tenant business '${existingBus.name}' (${id}) permanently deleted.`,
+      metadata: { deletedBusinessId: id, businessName: existingBus.name },
+    });
+
+    return res.json({
+      success: true,
+      message: `Tenant '${existingBus.name}' was successfully deleted.`,
+      deletedId: id,
+    });
+  } catch (err: any) {
+    console.error('[deleteTenant Error]', err);
+    return res.status(500).json({ success: false, message: err.message, code: 'INTERNAL_SERVER_ERROR' });
+  }
+}
+
+export async function deleteAllTenants(req: Request, res: Response) {
+  try {
+    const { includeCurrent = false, confirm } = req.body || {};
+
+    if (confirm !== 'DELETE_ALL_TENANTS') {
+      return res.status(400).json({
+        success: false,
+        message: "Explicit confirmation required. Send { confirm: 'DELETE_ALL_TENANTS' }.",
+        code: 'CONFIRMATION_REQUIRED',
+      });
+    }
+
+    const currentBusinessId = req.businessId;
+    let deletedCount = 0;
+
+    await transaction(async (tx) => {
+      let whereClause = '';
+      let busWhere = '';
+      const params: any[] = [];
+
+      if (!includeCurrent && currentBusinessId) {
+        whereClause = 'WHERE business_id != ?';
+        busWhere = 'WHERE id != ?';
+        params.push(currentBusinessId);
+      }
+
+      const countRow = await tx.queryOne<any>(`SELECT COUNT(id) as cnt FROM businesses ${busWhere}`, params);
+      deletedCount = Number(countRow?.cnt || 0);
+
+      await tx.execute(`DELETE FROM sale_items ${whereClause}`, params);
+      await tx.execute(`DELETE FROM payments ${whereClause}`, params);
+      await tx.execute(`DELETE FROM sales ${whereClause}`, params);
+      await tx.execute(`DELETE FROM held_sales ${whereClause}`, params);
+      await tx.execute(`DELETE FROM inventory_transactions ${whereClause}`, params);
+      await tx.execute(`DELETE FROM products ${whereClause}`, params);
+      await tx.execute(`DELETE FROM categories ${whereClause}`, params);
+      await tx.execute(`DELETE FROM customers ${whereClause}`, params);
+      await tx.execute(`DELETE FROM suppliers ${whereClause}`, params);
+      await tx.execute(`DELETE FROM expenses ${whereClause}`, params);
+      await tx.execute(`DELETE FROM expense_categories ${whereClause}`, params);
+      await tx.execute(`DELETE FROM notifications ${whereClause}`, params);
+      await tx.execute(`DELETE FROM tenant_payments ${whereClause}`, params);
+      await tx.execute(`DELETE FROM settings ${whereClause}`, params);
+      await tx.execute(`DELETE FROM audit_logs ${whereClause}`, params);
+      await tx.execute(`DELETE FROM users ${whereClause}`, params);
+      await tx.execute(`DELETE FROM businesses ${busWhere}`, params);
+    });
+
+    logAuditEvent({
+      businessId: (currentBusinessId || 'platform') as string,
+      userId: req.user?.userId,
+      action: 'ALL_TENANTS_DELETED',
+      entity: 'business',
+      description: `Bulk deleted ${deletedCount} tenants.`,
+      metadata: { deletedCount, includeCurrent },
+    });
+
+    return res.json({
+      success: true,
+      message: `Successfully removed ${deletedCount} tenants.`,
+      deletedCount,
+    });
+  } catch (err: any) {
+    console.error('[deleteAllTenants Error]', err);
     return res.status(500).json({ success: false, message: err.message, code: 'INTERNAL_SERVER_ERROR' });
   }
 }

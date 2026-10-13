@@ -3,15 +3,28 @@ import path from 'path';
 import fs from 'fs';
 import { config } from '../config/index.ts';
 
-// Ensure data directory exists
-const dbDir = path.dirname(config.dbPath);
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
+let _sqliteDb: Database.Database | null = null;
+
+export function getSqliteDb(): Database.Database {
+  if (!_sqliteDb) {
+    const dbDir = path.dirname(config.dbPath);
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
+    }
+    _sqliteDb = new Database(config.dbPath);
+    _sqliteDb.pragma('journal_mode = WAL');
+    _sqliteDb.pragma('foreign_keys = ON');
+  }
+  return _sqliteDb;
 }
 
-export const db = new Database(config.dbPath);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+export const db: Database.Database = new Proxy({} as Database.Database, {
+  get(_target, prop) {
+    const instance = getSqliteDb() as any;
+    const val = instance[prop];
+    return typeof val === 'function' ? val.bind(instance) : val;
+  },
+});
 
 export function initDatabase() {
   console.log(`[Database] Initializing SQLite database at: ${config.dbPath}`);
@@ -430,14 +443,15 @@ export function initDatabase() {
   safeAddColumn('sale_items', 'discount_percent REAL DEFAULT 0');
   safeAddColumn('sale_items', 'discount_amount REAL DEFAULT 0');
 
-  // Enforce strictly one ZYLIX Platform Owner: owner@zylix.com
+  // Ensure platform owner flag is valid without demoting or overwriting existing accounts
   try {
-    db.exec(`
-      UPDATE users SET is_platform_owner = 0 WHERE LOWER(TRIM(email)) <> 'owner@zylix.com';
-      UPDATE users SET name = 'Rabeeh', is_platform_owner = 1 WHERE role = 'OWNER' AND LOWER(TRIM(email)) = 'owner@zylix.com';
-    `);
+    const ownerEmail = (process.env.PLATFORM_OWNER_EMAIL || 'owner@zylix.com').trim().toLowerCase();
+    db.prepare(`
+      UPDATE users SET is_platform_owner = 1
+      WHERE role = 'OWNER' AND LOWER(TRIM(email)) = ? AND (is_platform_owner = 0 OR is_platform_owner IS NULL)
+    `).run(ownerEmail);
   } catch (e) {
-    console.warn('[DB Migration Warning] Platform owner enforcement failed:', e);
+    // Ignore migration warning
   }
 
   // Self-healing migration: Ensure active business users have ACTIVE status so approved tenants can log in

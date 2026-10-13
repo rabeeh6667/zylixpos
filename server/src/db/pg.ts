@@ -79,8 +79,11 @@ export async function closePgPool(): Promise<void> {
 export function translateSqlToPg(sql: string): string {
   let translated = sql;
 
-  // Replace SQLite date(x, "localtime") or date(x, 'localtime') -> (x)::date
-  translated = translated.replace(/date\(\s*([^,\)]+)\s*,\s*["']localtime["']\s*\)/gi, '($1)::date');
+  // Replace SQLite date(x, "localtime") or date(x, 'localtime') -> ((x AT TIME ZONE 'Asia/Kolkata')::date)
+  translated = translated.replace(
+    /date\(\s*([^,\)]+)\s*,\s*["']localtime["']\s*\)/gi,
+    "((($1) AT TIME ZONE 'Asia/Kolkata')::date)"
+  );
 
   // Replace SQLite date(x) -> (x)::date
   translated = translated.replace(/date\(\s*([^,\)]+)\s*\)/gi, '($1)::date');
@@ -105,6 +108,12 @@ export function translateSqlToPg(sql: string): string {
       translated = translated + ' ON CONFLICT (business_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP';
     }
   }
+
+  // Safe invoice number integer extraction: CAST(SUBSTR(col, n) AS INTEGER) -> CAST(NULLIF(regexp_replace(SUBSTRING(col FROM n), '[^0-9]', '', 'g'), '') AS INTEGER)
+  translated = translated.replace(
+    /CAST\s*\(\s*SUBSTR\s*\(\s*([a-zA-Z0-9_\.]+)\s*,\s*(\d+)\s*\)\s*AS\s*INTEGER\s*\)/gi,
+    "CAST(NULLIF(regexp_replace(SUBSTRING($1 FROM $2), '[^0-9]', '', 'g'), '') AS INTEGER)"
+  );
 
   return translated;
 }

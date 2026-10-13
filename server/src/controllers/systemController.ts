@@ -45,7 +45,7 @@ export async function handleListBackups(req: Request, res: Response) {
 
 export async function handleDeleteBackup(req: Request, res: Response) {
   try {
-    const { id } = req.params;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const businessId = req.businessId!;
     const userId = req.user?.userId;
 
@@ -101,7 +101,7 @@ export async function handleRestoreBackup(req: Request, res: Response) {
 
 export async function handleDatabaseHealth(req: Request, res: Response) {
   try {
-    const health = getDatabaseHealth();
+    const health = await getDatabaseHealth();
     return res.json({
       success: true,
       health,

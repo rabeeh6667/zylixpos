@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { db } from '../db/index.ts';
+import { query, queryOne, execute } from '../db/dbAdapter.ts';
 import { cryptoUUID } from '../utils/crypto.ts';
 import { logAuditEvent } from '../utils/auditLogger.ts';
 import { z } from 'zod';
@@ -72,19 +72,19 @@ export async function getExpenses(req: Request, res: Response) {
       params.push(term, term, term);
     }
 
-    const countRow = db.prepare(`
-      SELECT COUNT(e.id) as total, COALESCE(SUM(e.amount), 0) as totalAmount
+    const countRow = (await queryOne<any>(`
+      SELECT COUNT(e.id) as total, COALESCE(SUM(e.amount), 0) as total_amount
       FROM expenses e
       ${whereClause}
-    `).get(...params) as any || { total: 0, totalAmount: 0 };
+    `, params)) || { total: 0, total_amount: 0 };
 
     const total = Number(countRow.total || 0);
-    const totalAmount = Number(countRow.totalAmount || 0);
+    const totalAmount = Number(countRow.total_amount ?? countRow.totalamount ?? countRow.totalAmount ?? 0);
     const pageNum = page ? Math.max(1, parseInt(String(page), 10) || 1) : 1;
     const limitNum = limit ? Math.min(500, Math.max(1, parseInt(String(limit), 10) || 50)) : 0;
     const totalPages = limitNum > 0 ? Math.ceil(total / limitNum) : 1;
 
-    let query = `
+    let sql = `
       SELECT e.*, ec.name as category_name, u.name as created_by_name
       FROM expenses e
       LEFT JOIN expense_categories ec ON e.category_id = ec.id
@@ -95,11 +95,11 @@ export async function getExpenses(req: Request, res: Response) {
 
     const queryParams = [...params];
     if (limitNum > 0) {
-      query += ` LIMIT ? OFFSET ?`;
+      sql += ` LIMIT ? OFFSET ?`;
       queryParams.push(limitNum, (pageNum - 1) * limitNum);
     }
 
-    const expenses = db.prepare(query).all(...queryParams);
+    const expenses = await query(sql, queryParams);
 
     return res.json({
       success: true,
@@ -119,15 +119,15 @@ export async function getExpenses(req: Request, res: Response) {
 
 export async function getExpenseById(req: Request, res: Response) {
   try {
-    const { id } = req.params;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
-    const expense = db.prepare(`
+    const expense = await queryOne(`
       SELECT e.*, ec.name as category_name, u.name as created_by_name
       FROM expenses e
       LEFT JOIN expense_categories ec ON e.category_id = ec.id
       LEFT JOIN users u ON e.user_id = u.id
       WHERE e.id = ? AND e.business_id = ?
-    `).get(id, req.businessId);
+    `, [id, req.businessId]);
 
     if (!expense) {
       return res.status(404).json({ success: false, message: 'Expense record not found in your business.' });
@@ -157,11 +157,11 @@ export async function createExpense(req: Request, res: Response) {
     const id = cryptoUUID();
     const dateVal = expenseDate || new Date().toISOString();
 
-    db.prepare(`
+    await execute(`
       INSERT INTO expenses (
         id, business_id, user_id, title, category, category_id, amount, description, payment_method, expense_date, status
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE')
-    `).run(
+    `, [
       id,
       req.businessId,
       req.user?.userId || null,
@@ -172,7 +172,7 @@ export async function createExpense(req: Request, res: Response) {
       description || null,
       paymentMethod,
       dateVal
-    );
+    ]);
 
     logAuditEvent({
       businessId: req.businessId!,
@@ -205,9 +205,9 @@ export async function createExpense(req: Request, res: Response) {
 
 export async function updateExpense(req: Request, res: Response) {
   try {
-    const { id } = req.params;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
-    const existing = db.prepare('SELECT id FROM expenses WHERE id = ? AND business_id = ?').get(id, req.businessId);
+    const existing = await queryOne('SELECT id FROM expenses WHERE id = ? AND business_id = ?', [id, req.businessId]);
     if (!existing) {
       return res.status(404).json({ success: false, message: 'Expense record not found.' });
     }
@@ -241,7 +241,7 @@ export async function updateExpense(req: Request, res: Response) {
     updates.push('updated_at = CURRENT_TIMESTAMP');
     params.push(id, req.businessId);
 
-    db.prepare(`UPDATE expenses SET ${updates.join(', ')} WHERE id = ? AND business_id = ?`).run(...params);
+    await execute(`UPDATE expenses SET ${updates.join(', ')} WHERE id = ? AND business_id = ?`, params);
 
     logAuditEvent({
       businessId: req.businessId!,
@@ -263,14 +263,14 @@ export async function updateExpense(req: Request, res: Response) {
 
 export async function archiveExpense(req: Request, res: Response) {
   try {
-    const { id } = req.params;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
-    const existing = db.prepare('SELECT id FROM expenses WHERE id = ? AND business_id = ?').get(id, req.businessId);
+    const existing = await queryOne('SELECT id FROM expenses WHERE id = ? AND business_id = ?', [id, req.businessId]);
     if (!existing) {
       return res.status(404).json({ success: false, message: 'Expense record not found.' });
     }
 
-    db.prepare(`UPDATE expenses SET status = 'ARCHIVED', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND business_id = ?`).run(id, req.businessId);
+    await execute(`UPDATE expenses SET status = 'ARCHIVED', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND business_id = ?`, [id, req.businessId]);
 
     logAuditEvent({
       businessId: req.businessId!,
@@ -292,11 +292,11 @@ export async function archiveExpense(req: Request, res: Response) {
 // Get Expense Categories
 export async function getExpenseCategories(req: Request, res: Response) {
   try {
-    const categories = db.prepare(`
+    const categories = await query(`
       SELECT * FROM expense_categories
       WHERE business_id = ? AND status = 'ACTIVE'
       ORDER BY name ASC
-    `).all(req.businessId);
+    `, [req.businessId]);
 
     // If no categories seeded for business yet, return default list
     const defaults = ['Rent', 'Electricity', 'Salary', 'Transport', 'Maintenance', 'Supplies', 'Other'];

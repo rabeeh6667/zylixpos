@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { db } from '../db/index.ts';
+import { queryOne, transaction } from '../db/dbAdapter.ts';
 import { hashPassword, comparePassword } from '../utils/password.ts';
 import { generateToken } from '../utils/jwt.ts';
 import { cryptoUUID } from '../utils/crypto.ts';
@@ -36,7 +36,7 @@ export async function register(req: Request, res: Response) {
     const { businessName, businessType, ownerName, email, password, phone, city, address } = parseResult.data;
 
     // Check if email already registered
-    const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email.toLowerCase());
+    const existingUser = await queryOne('SELECT id FROM users WHERE LOWER(TRIM(email)) = ?', [email.toLowerCase().trim()]);
     if (existingUser) {
       return res.status(409).json({
         success: false,
@@ -44,47 +44,82 @@ export async function register(req: Request, res: Response) {
       });
     }
 
+    const userCountRow = await queryOne<any>('SELECT COUNT(id) as count FROM users');
+    const isFirstAccount = Number(userCountRow?.count || 0) === 0;
+    const isPlatformOwnerEmail = email.toLowerCase().trim() === (process.env.PLATFORM_OWNER_EMAIL || 'owner@zylix.com').toLowerCase().trim();
+    const isBootstrapAdmin = isFirstAccount || isPlatformOwnerEmail;
+
+    const initialStatus = isBootstrapAdmin ? 'ACTIVE' : 'PENDING';
+    const isPlatformOwnerVal = isBootstrapAdmin ? 1 : 0;
+
     const businessId = cryptoUUID();
     const userId = cryptoUUID();
     const passwordHash = await hashPassword(password);
 
     // Run transaction
-    const insertBusiness = db.prepare(`
-      INSERT INTO businesses (id, name, business_type, phone, email, address, city, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING')
-    `);
+    await transaction(async (tx) => {
+      await tx.execute(`
+        INSERT INTO businesses (id, name, business_type, phone, email, address, city, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `, [businessId, businessName, businessType, phone, email.toLowerCase().trim(), address || null, city, initialStatus]);
 
-    const insertUser = db.prepare(`
-      INSERT INTO users (id, business_id, name, email, password_hash, role, status)
-      VALUES (?, ?, ?, ?, ?, 'OWNER', 'PENDING')
-    `);
+      await tx.execute(`
+        INSERT INTO users (id, business_id, name, email, password_hash, role, status, is_platform_owner)
+        VALUES (?, ?, ?, ?, ?, 'OWNER', ?, ?)
+      `, [userId, businessId, ownerName, email.toLowerCase().trim(), passwordHash, initialStatus, isPlatformOwnerVal]);
 
-    const insertSetting = db.prepare(`
-      INSERT INTO settings (id, business_id, key, value)
-      VALUES (?, ?, ?, ?)
-    `);
-
-    db.transaction(() => {
-      insertBusiness.run(businessId, businessName, businessType, phone, email.toLowerCase(), address || null, city);
-      insertUser.run(userId, businessId, ownerName, email.toLowerCase(), passwordHash);
-      
       // Default business settings
-      insertSetting.run(cryptoUUID(), businessId, 'currency', 'USD');
-      insertSetting.run(cryptoUUID(), businessId, 'currency_symbol', '$');
-      insertSetting.run(cryptoUUID(), businessId, 'tax_rate', '8.5');
-      insertSetting.run(cryptoUUID(), businessId, 'receipt_header', `${businessName} - Powering Better Business.`);
-      insertSetting.run(cryptoUUID(), businessId, 'low_stock_threshold', '5');
-      insertSetting.run(cryptoUUID(), businessId, 'allow_negative_inventory', 'false');
-    })();
+      const settingsToInsert = [
+        ['currency', 'USD'],
+        ['currency_symbol', '$'],
+        ['tax_rate', '8.5'],
+        ['receipt_header', `${businessName} - Powering Better Business.`],
+        ['low_stock_threshold', '5'],
+        ['allow_negative_inventory', 'false'],
+      ];
+
+      for (const [key, value] of settingsToInsert) {
+        await tx.execute(`
+          INSERT INTO settings (id, business_id, key, value)
+          VALUES (?, ?, ?, ?)
+        `, [cryptoUUID(), businessId, key, value]);
+      }
+    });
 
     logAuditEvent({
       businessId,
       userId,
-      action: 'BUSINESS_REGISTERED_PENDING',
+      action: isBootstrapAdmin ? 'BUSINESS_REGISTERED_ACTIVE' : 'BUSINESS_REGISTERED_PENDING',
       entity: 'business',
       entityId: businessId,
-      metadata: { businessName, businessType, ownerName, email, phone, city },
+      metadata: { businessName, businessType, ownerName, email, phone, city, isPlatformOwner: isBootstrapAdmin },
     });
+
+    if (isBootstrapAdmin) {
+      const token = generateToken({
+        userId,
+        businessId,
+        role: 'OWNER',
+        email: email.toLowerCase().trim(),
+        name: ownerName,
+        isPlatformOwner: true,
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: 'Registration successful! Your Platform Owner business is now active.',
+        pending: false,
+        token,
+        user: {
+          id: userId,
+          businessId,
+          name: ownerName,
+          email: email.toLowerCase().trim(),
+          role: 'OWNER',
+          isPlatformOwner: true,
+        },
+      });
+    }
 
     return res.status(201).json({
       success: true,
@@ -113,13 +148,13 @@ export async function login(req: Request, res: Response) {
 
     const { email, password } = parseResult.data;
 
-    const user = db.prepare(`
+    const user = await queryOne<any>(`
       SELECT u.id, u.business_id, u.name, u.email, u.password_hash, u.role, u.status, u.is_platform_owner,
              b.name as business_name, b.business_type, b.logo, b.status as business_status
       FROM users u
       JOIN businesses b ON u.business_id = b.id
-      WHERE u.email = ?
-    `).get(email.toLowerCase()) as any;
+      WHERE LOWER(TRIM(u.email)) = ?
+    `, [email.toLowerCase().trim()]);
 
     if (!user) {
       return res.status(401).json({
@@ -171,11 +206,10 @@ export async function login(req: Request, res: Response) {
       });
     }
 
-    const normalizedEmail = String(user.email || '').trim().toLowerCase();
     const isPlatformOwner = Boolean(
       user.role === 'OWNER' &&
       user.status === 'ACTIVE' &&
-      normalizedEmail === 'owner@zylix.com'
+      Number(user.is_platform_owner) === 1
     );
 
     const tokenPayload = {
@@ -234,31 +268,23 @@ export async function getCurrentUser(req: Request, res: Response) {
       return res.status(401).json({ success: false, message: 'Unauthenticated' });
     }
 
-    const user = db.prepare(`
+    const user = await queryOne<any>(`
       SELECT u.id, u.business_id, u.name, u.email, u.role, u.status, u.is_platform_owner, u.created_at,
              b.name as business_name, b.business_type, b.phone, b.email as business_email, b.address, b.logo, b.status as business_status
       FROM users u
       JOIN businesses b ON u.business_id = b.id
       WHERE u.id = ? AND u.business_id = ?
-    `).get(req.user.userId, req.businessId) as any;
+    `, [req.user.userId, req.businessId]);
 
     if (!user) {
       return res.status(404).json({ success: false, message: 'User or Business record not found.' });
     }
 
-    const normalizedEmail = String(user.email || '').trim().toLowerCase();
     const isPlatformOwner = Boolean(
       user.role === 'OWNER' &&
       user.status === 'ACTIVE' &&
-      normalizedEmail === 'owner@zylix.com'
+      Number(user.is_platform_owner) === 1
     );
-
-    console.log(`[CURRENT USER ME]
-userId=${user.id}
-email=${user.email}
-role=${user.role}
-businessId=${user.business_id}
-isPlatformOwner=${isPlatformOwner}`);
 
     if (user.business_status === 'SUSPENDED') {
       return res.status(403).json({
