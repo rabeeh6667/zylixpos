@@ -28,8 +28,7 @@ import {
   ArrowLeft,
   PieChart,
   ShoppingBag,
-  Clock,
-  Trash2
+  Clock
 } from 'lucide-react';
 
 interface TenantItem {
@@ -102,71 +101,6 @@ export const TenantsPage: React.FC = () => {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
-  // Delete Tenant States
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [tenantToDelete, setTenantToDelete] = useState<TenantItem | null>(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-
-  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
-  const [deleteAllConfirmInput, setDeleteAllConfirmInput] = useState('');
-  const [deleteAllLoading, setDeleteAllLoading] = useState(false);
-
-  const handleOpenDelete = (t: TenantItem) => {
-    setTenantToDelete(t);
-    setShowDeleteModal(true);
-  };
-
-  const handleExecuteDelete = async () => {
-    if (!tenantToDelete) return;
-    setDeleteLoading(true);
-    try {
-      const res = await apiFetch(`/tenants/${tenantToDelete.id}`, {
-        method: 'DELETE',
-      });
-      if (res.success) {
-        showToast(res.message || 'Tenant deleted successfully', 'success');
-        setShowDeleteModal(false);
-        setTenantToDelete(null);
-        if (businessId) {
-          navigate('/platform/tenants');
-        } else {
-          fetchTenants();
-        }
-      } else {
-        showToast(res.message || 'Failed to delete tenant', 'error');
-      }
-    } catch (err: any) {
-      showToast(err.message || 'Failed to delete tenant', 'error');
-    } finally {
-      setDeleteLoading(false);
-    }
-  };
-
-  const handleExecuteDeleteAll = async () => {
-    if (deleteAllConfirmInput !== 'DELETE') {
-      showToast("Please type 'DELETE' to confirm", 'warning');
-      return;
-    }
-    setDeleteAllLoading(true);
-    try {
-      const res = await apiFetch('/tenants', {
-        method: 'DELETE',
-        body: JSON.stringify({ confirm: 'DELETE_ALL_TENANTS', includeCurrent: true }),
-      });
-      if (res.success) {
-        showToast(res.message || 'All tenants removed successfully', 'success');
-        setShowDeleteAllModal(false);
-        setDeleteAllConfirmInput('');
-        fetchTenants();
-      } else {
-        showToast(res.message || 'Failed to remove all tenants', 'error');
-      }
-    } catch (err: any) {
-      showToast(err.message || 'Failed to remove all tenants', 'error');
-    } finally {
-      setDeleteAllLoading(false);
-    }
-  };
 
   // Record Revenue Modal State
   const [showRevenueModal, setShowRevenueModal] = useState(false);
@@ -549,15 +483,7 @@ export const TenantsPage: React.FC = () => {
                   <Power size={15} />
                   <span>{t.status === 'ACTIVE' ? 'Suspend Tenant' : 'Activate Tenant'}</span>
                 </button>
-                <button
-                  onClick={() => handleOpenDelete({ id: t.id, business_name: t.name } as any)}
-                  className="btn btn-sm"
-                  style={{ backgroundColor: '#EF4444', color: '#FFFFFF', border: 'none' }}
-                  title="Permanently Delete Tenant"
-                >
-                  <Trash2 size={15} />
-                  <span>Delete</span>
-                </button>
+
               </>
             )}
           </div>
@@ -870,20 +796,7 @@ export const TenantsPage: React.FC = () => {
             <span>Refresh</span>
           </button>
 
-          {(summary?.total_tenants || 0) > 0 && (
-            <button
-              onClick={() => {
-                setDeleteAllConfirmInput('');
-                setShowDeleteAllModal(true);
-              }}
-              className="btn btn-secondary btn-sm"
-              style={{ color: '#EF4444', borderColor: 'rgba(239, 68, 68, 0.3)' }}
-              title="Remove All Registered Tenants"
-            >
-              <Trash2 size={15} />
-              <span>Delete All Tenants</span>
-            </button>
-          )}
+
 
           <button onClick={handleOpenAdd} className="btn btn-primary btn-sm">
             <Plus size={16} />
@@ -1055,14 +968,7 @@ export const TenantsPage: React.FC = () => {
                           >
                             <XCircle size={14} /> Reject
                           </button>
-                          <button
-                            onClick={() => handleOpenDelete(t)}
-                            className="btn btn-ghost btn-sm"
-                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', color: '#EF4444' }}
-                            title="Delete Request"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+
                         </div>
                       ) : (
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.375rem' }}>
@@ -1102,14 +1008,7 @@ export const TenantsPage: React.FC = () => {
                           >
                             <Power size={14} /> {t.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
                           </button>
-                          <button
-                            onClick={() => handleOpenDelete(t)}
-                            className="btn btn-ghost btn-sm"
-                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', color: '#EF4444' }}
-                            title="Permanently Delete Tenant"
-                          >
-                            <Trash2 size={14} /> Delete
-                          </button>
+
                         </div>
                       )}
                     </td>
@@ -1401,96 +1300,6 @@ export const TenantsPage: React.FC = () => {
         </div>
       )}
 
-      {/* DELETE SINGLE TENANT MODAL */}
-      {showDeleteModal && tenantToDelete && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
-          <div className="zylix-card" style={{ width: '100%', maxWidth: '480px', padding: '1.5rem', backgroundColor: '#FFFFFF', borderRadius: 'var(--radius-xl)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#EF4444' }}>
-                <Trash2 size={20} />
-                <h3 style={{ fontSize: '1.125rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>Delete Tenant Business</h3>
-              </div>
-              <button onClick={() => setShowDeleteModal(false)} className="btn btn-ghost btn-sm" style={{ padding: '0.25rem' }}>
-                <X size={18} />
-              </button>
-            </div>
-
-            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: '0 0 1rem 0' }}>
-              Are you sure you want to permanently delete <strong>{tenantToDelete.business_name}</strong>?
-            </p>
-            <div style={{ background: '#FEF2F2', border: '1px solid #FEE2E2', borderRadius: '8px', padding: '0.75rem 1rem', fontSize: '0.8125rem', color: '#B91C1C', marginBottom: '1.25rem' }}>
-              ⚠️ This will permanently remove all associated products, sales, inventory records, and user accounts for this business. This action cannot be undone.
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-              <button type="button" onClick={() => setShowDeleteModal(false)} className="btn btn-secondary">
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={deleteLoading}
-                onClick={handleExecuteDelete}
-                className="btn btn-danger"
-                style={{ backgroundColor: '#EF4444', color: '#FFFFFF', border: 'none' }}
-              >
-                {deleteLoading ? 'Deleting...' : 'Permanently Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* DELETE ALL TENANTS MODAL */}
-      {showDeleteAllModal && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
-          <div className="zylix-card" style={{ width: '100%', maxWidth: '520px', padding: '1.5rem', backgroundColor: '#FFFFFF', borderRadius: 'var(--radius-xl)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#EF4444' }}>
-                <Trash2 size={20} />
-                <h3 style={{ fontSize: '1.125rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>Remove All Tenants</h3>
-              </div>
-              <button onClick={() => setShowDeleteAllModal(false)} className="btn btn-ghost btn-sm" style={{ padding: '0.25rem' }}>
-                <X size={18} />
-              </button>
-            </div>
-
-            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: '0 0 1rem 0' }}>
-              You are about to remove <strong>all platform tenants</strong> from the system.
-            </p>
-            <div style={{ background: '#FEF2F2', border: '1px solid #FEE2E2', borderRadius: '8px', padding: '0.75rem 1rem', fontSize: '0.8125rem', color: '#B91C1C', marginBottom: '1rem' }}>
-              ⚠️ This will wipe all tenant stores, their products, sales transactions, customers, and user accounts.
-            </div>
-
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.375rem' }}>
-                Type <strong>DELETE</strong> to confirm:
-              </label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Type DELETE"
-                value={deleteAllConfirmInput}
-                onChange={(e) => setDeleteAllConfirmInput(e.target.value)}
-              />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-              <button type="button" onClick={() => setShowDeleteAllModal(false)} className="btn btn-secondary">
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={deleteAllLoading || deleteAllConfirmInput !== 'DELETE'}
-                onClick={handleExecuteDeleteAll}
-                className="btn btn-danger"
-                style={{ backgroundColor: '#EF4444', color: '#FFFFFF', border: 'none' }}
-              >
-                {deleteAllLoading ? 'Removing All...' : 'Confirm Remove All'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );

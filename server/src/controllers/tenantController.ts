@@ -52,8 +52,14 @@ export async function getTenants(req: Request, res: Response) {
     const limitNum = Math.min(100, Math.max(1, parseInt(String(limit), 10) || 20));
     const offset = (pageNum - 1) * limitNum;
 
-    let whereClause = 'WHERE 1=1';
+    // Exclude the platform owner business so the platform administrator headquarters is not listed as a tenant
+    let whereClause = 'WHERE b.id NOT IN (SELECT business_id FROM users WHERE is_platform_owner = 1)';
     const params: any[] = [];
+
+    if (req.businessId) {
+      whereClause += ' AND b.id != ?';
+      params.push(req.businessId);
+    }
 
     if (status) {
       whereClause += ' AND b.status = ?';
@@ -66,20 +72,20 @@ export async function getTenants(req: Request, res: Response) {
       params.push(term, term, term, term);
     }
 
-    // Global Summary Aggregation across all tenants
+    // Global Summary Aggregation across external client tenants only (excluding platform owner headquarters)
     const summary = (await queryOne<any>(`
       SELECT
-        (SELECT COUNT(id) FROM businesses) as total_tenants,
-        (SELECT COUNT(id) FROM businesses WHERE COALESCE(status, 'ACTIVE') = 'ACTIVE') as active_tenants,
-        (SELECT COUNT(id) FROM businesses WHERE status = 'SUSPENDED') as suspended_tenants,
-        (SELECT COUNT(id) FROM businesses WHERE status = 'PENDING') as pending_tenants,
-        (SELECT COUNT(id) FROM users) as total_users,
-        (SELECT COUNT(id) FROM products WHERE status != 'ARCHIVED') as total_products,
-        (SELECT COUNT(id) FROM sales WHERE status != 'CANCELLED') as total_sales,
-        (SELECT COALESCE(SUM(grand_total), 0) FROM sales WHERE status != 'CANCELLED') as total_revenue,
-        (SELECT COALESCE(SUM(amount), 0) FROM tenant_payments) as platform_collected_revenue,
-        (SELECT COALESCE(SUM(amount), 0) FROM tenant_payments WHERE payment_type = 'INITIAL_PAYMENT') as total_initial_payments,
-        (SELECT COALESCE(SUM(amount), 0) FROM tenant_payments WHERE payment_type = 'MONTHLY_SUBSCRIPTION') as total_subscriptions
+        (SELECT COUNT(id) FROM businesses WHERE id NOT IN (SELECT business_id FROM users WHERE is_platform_owner = 1)) as total_tenants,
+        (SELECT COUNT(id) FROM businesses WHERE COALESCE(status, 'ACTIVE') = 'ACTIVE' AND id NOT IN (SELECT business_id FROM users WHERE is_platform_owner = 1)) as active_tenants,
+        (SELECT COUNT(id) FROM businesses WHERE status = 'SUSPENDED' AND id NOT IN (SELECT business_id FROM users WHERE is_platform_owner = 1)) as suspended_tenants,
+        (SELECT COUNT(id) FROM businesses WHERE status = 'PENDING' AND id NOT IN (SELECT business_id FROM users WHERE is_platform_owner = 1)) as pending_tenants,
+        (SELECT COUNT(id) FROM users WHERE (is_platform_owner = 0 OR is_platform_owner IS NULL) AND business_id NOT IN (SELECT business_id FROM users WHERE is_platform_owner = 1)) as total_users,
+        (SELECT COUNT(id) FROM products WHERE status != 'ARCHIVED' AND business_id NOT IN (SELECT business_id FROM users WHERE is_platform_owner = 1)) as total_products,
+        (SELECT COUNT(id) FROM sales WHERE status != 'CANCELLED' AND business_id NOT IN (SELECT business_id FROM users WHERE is_platform_owner = 1)) as total_sales,
+        (SELECT COALESCE(SUM(grand_total), 0) FROM sales WHERE status != 'CANCELLED' AND business_id NOT IN (SELECT business_id FROM users WHERE is_platform_owner = 1)) as total_revenue,
+        (SELECT COALESCE(SUM(amount), 0) FROM tenant_payments WHERE business_id NOT IN (SELECT business_id FROM users WHERE is_platform_owner = 1)) as platform_collected_revenue,
+        (SELECT COALESCE(SUM(amount), 0) FROM tenant_payments WHERE payment_type = 'INITIAL_PAYMENT' AND business_id NOT IN (SELECT business_id FROM users WHERE is_platform_owner = 1)) as total_initial_payments,
+        (SELECT COALESCE(SUM(amount), 0) FROM tenant_payments WHERE payment_type = 'MONTHLY_SUBSCRIPTION' AND business_id NOT IN (SELECT business_id FROM users WHERE is_platform_owner = 1)) as total_subscriptions
     `)) || {
       total_tenants: 0,
       active_tenants: 0,
