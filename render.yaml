@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: zylix-api
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install
+    startCommand: node --loader tsx/esm server/src/server.ts
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 24h
+      - key: PLATFORM_OWNER_EMAIL
+        value: owner@zylix.com
